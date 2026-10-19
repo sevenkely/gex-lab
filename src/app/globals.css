@@ -1,26 +1,86 @@
 @import "tailwindcss";
+@import "../styles/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* Les tokens Gamma Field exposés comme utilitaires Tailwind :
+   bg-surf, border-line, text-tx2, text-ac, ease-field… */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surf: var(--surf);
+  --color-line: var(--line);
+  --color-tx: var(--tx);
+  --color-tx2: var(--tx2);
+  --color-ac: var(--ac);
+  --color-call: rgb(var(--call));
+  --color-put: rgb(var(--put));
+  --color-zero: rgb(var(--zero));
+  --color-candle-up: var(--candle-up);
+  --color-candle-down: var(--candle-down);
+  --font-sans: var(--font-sora), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease-field: var(--ease);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Chiffres : toujours JetBrains Mono tabulaire. */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Panneau de base (carte translucide) */
+@utility panel {
+  background: var(--surf);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  backdrop-filter: blur(var(--blur));
+}
+
+@utility label {
+  color: var(--tx2);
+  font-size: 11px;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--ac) 35%, transparent);
+}
+
+/* Focus clavier visible partout */
+:where(button, a, [tabindex]):focus-visible {
+  outline: 2px solid var(--ac);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+
+/* Scrollbars discrètes */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(160, 185, 230, 0.22) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(160, 185, 230, 0.22);
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }

@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# espace de travail local (journaux de dev, captures, fichiers temporaires)
+/.tmp
+
+# artefacts d'outillage Freebuff
+/.freebuff
+
+# playwright
+/playwright-report
+/test-results

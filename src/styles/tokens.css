@@ -1,0 +1,252 @@
+/* ==========================================================================
+   Gamma Field — tokens de design
+   L'accent --ac suit le régime (long = turquoise, short = braise) et anime
+   l'ensemble de l'interface via une transition de couleur personnalisée.
+   ========================================================================== */
+
+@property --ac {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #2dd4bf;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces & traits */
+  --bg: #0a0f1c;
+  --surf: rgba(18, 26, 43, 0.7);
+  --line: rgba(160, 185, 230, 0.1);
+  --blur: 10px;
+
+  /* texte */
+  --tx: #e6ecf5;
+  --tx2: #8b97ad;
+
+  /* niveaux GEX (rgb pour composition d'alpha) */
+  --call: 45, 212, 191;
+  --put: 255, 107, 74;
+  --zero: 232, 216, 168;
+
+  /* bougies : jamais de rouge/vert — blanc froid vs bleu ardoise */
+  --candle-up: #e6ecf5;
+  --candle-down: #6f7fa3;
+
+  /* régime : l'accent principal + la variante opposée */
+  /* régime : la variable est posée en clair (pas de var() intermédiaire) et
+     l'accent du régime court est le même turquoise/braise que le logo. */
+  --ac-long-c: #2dd4bf;
+  --ac-short-c: #ff6b4a;
+  --ac: #2dd4bf;
+
+  /* mouvement */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-1: 150ms;
+  --dur-2: 250ms;
+  --dur-3: 450ms;
+  --dur-regime: 900ms;
+}
+
+/*
+ * Passage long → short gamma.
+ *
+ * On n'anime PAS la custom property --ac elle-même : Chromium garde ces
+ * transitions figées (valeur bloquée sur la couleur de départ quand la valeur
+ * provient d'un var()). On anime donc les propriétés réellement colorées —
+ * couleur, fond, bordure, ombre — via la classe .accent, et le halo croise
+ * deux calques en opacité. Résultat : transition douce de toute l'interface,
+ * sans blocage.
+ */
+html[data-regime="short"] {
+  --ac: #ff6b4a;
+}
+
+.accent {
+  transition:
+    color var(--dur-regime) var(--ease),
+    background-color var(--dur-regime) var(--ease),
+    border-color var(--dur-regime) var(--ease),
+    box-shadow var(--dur-regime) var(--ease),
+    opacity var(--dur-regime) var(--ease);
+}
+
+/* teinte des niveaux, exposée aussi aux graphiques canvas */
+:root {
+  --call-rgb: 45, 212, 191;
+  --put-rgb: 255, 107, 74;
+  --zero-rgb: 232, 216, 168;
+}
+
+/* Halo : calque fixe derrière l'application, teinté par l'accent du régime.
+   Deux calques superposés (long / short) dont l'opacité se croise : les
+   dégradés ne sont pas interpolables, l'opacité l'est. */
+#glow {
+  position: fixed;
+  inset: -25%;
+  pointer-events: none;
+  z-index: 0;
+  animation: drift 14s ease-in-out infinite alternate;
+}
+
+#glow span {
+  position: absolute;
+  inset: 0;
+  transition: opacity var(--dur-regime) var(--ease);
+}
+
+#glow .glow-long {
+  background:
+    radial-gradient(
+      40% 40% at 72% 30%,
+      color-mix(in srgb, var(--ac-long-c) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      35% 35% at 12% 95%,
+      color-mix(in srgb, var(--ac-long-c) 12%, transparent),
+      transparent 70%
+    );
+  opacity: 1;
+}
+
+#glow .glow-short {
+  background:
+    radial-gradient(
+      40% 40% at 72% 30%,
+      color-mix(in srgb, var(--ac-short-c) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      35% 35% at 12% 95%,
+      color-mix(in srgb, var(--ac-short-c) 12%, transparent),
+      transparent 70%
+    );
+  opacity: 0;
+}
+
+html[data-regime="short"] #glow .glow-long {
+  opacity: 0;
+}
+
+html[data-regime="short"] #glow .glow-short {
+  opacity: 1;
+}
+
+@keyframes drift {
+  to {
+    transform: translate(-3%, 2%);
+  }
+}
+
+/* Shimmer des squelettes de chargement */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(160, 185, 230, 0.06) 0%,
+    rgba(160, 185, 230, 0.14) 50%,
+    rgba(160, 185, 230, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Indicateur glissant (rail, onglets, panneaux) */
+.sliding {
+  transition:
+    transform var(--dur-2) var(--ease),
+    width var(--dur-2) var(--ease),
+    opacity var(--dur-2) var(--ease);
+}
+
+/* Flash d'une valeur qui vient de changer (tick de prix) */
+.flash-value {
+  animation: flash-value 600ms var(--ease);
+}
+
+@keyframes flash-value {
+  from {
+    color: #fff;
+    text-shadow: 0 0 12px color-mix(in srgb, var(--ac) 60%, transparent);
+  }
+}
+
+/* Entrée en cascade des cartes et lignes */
+.rise {
+  animation: rise var(--dur-3) var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* Remplissage en cascade des barres */
+.fill {
+  animation: fill 900ms var(--ease) backwards;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* Sparkline : trace dessiné (pathLength = 1) */
+.spark path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: draw 1300ms var(--ease) 120ms forwards;
+}
+
+@keyframes draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Entrée d'une ligne de flux : glissement + flash d'accent */
+.row-in {
+  animation: row-in 700ms var(--ease) backwards;
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+    background: color-mix(in srgb, var(--ac) 22%, transparent);
+  }
+}
+
+/*
+ * Mouvement réduit : plus aucune animation ni transition, mais l'état final
+ * reste lisible — les tracés de sparkline sont déjà terminés (dashoffset 0) et
+ * les remplissages en cascade retombent sur leur style naturel (100 %).
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+  #glow {
+    animation: none;
+  }
+  .spark path {
+    stroke-dashoffset: 0;
+  }
+}
