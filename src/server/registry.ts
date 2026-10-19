@@ -4,7 +4,12 @@
  * Les pages et les routes API ne parlent jamais directement à un provider :
  * elles demandent un snapshot typé + sa provenance. Le registre choisit la
  * source selon la configuration (`DATA_MODE`), met en cache, gère les proxies
- * et retombe sur les fixtures quand tout échoue — en le signalant.
+ * et retombe sur les fixtures quand tout échoue — en le signalant (`demo`).
+ *
+ * DATA_MODE :
+ *   - "auto" (défaut) : source réelle, repli sur fixtures en cas d'échec ;
+ *   - "live" : source réelle uniquement, l'erreur remonte ;
+ *   - "mock" : fixtures uniquement (développement hors ligne).
  */
 
 import {
@@ -23,6 +28,10 @@ import {
   mockFlow,
   mockPriceProvider,
 } from "./providers/mock";
+import { cboeChainProvider } from "./providers/cboe";
+import { deribitChainProvider, deribitPriceProvider, fetchDeribitFlow } from "./providers/deribit";
+import { fetchFinraDarkPool } from "./providers/finra";
+import { yahooPriceProvider } from "./providers/yahoo";
 import {
   ProviderError,
   type CandleInterval,
@@ -38,8 +47,16 @@ import {
 } from "./providers/types";
 
 /** Providers disponibles, par ordre de préférence. */
-export const chainProviders: ChainProvider[] = [mockChainProvider];
-export const priceProviders: PriceProvider[] = [mockPriceProvider];
+export const chainProviders: ChainProvider[] = [
+  deribitChainProvider,
+  cboeChainProvider,
+  mockChainProvider,
+];
+export const priceProviders: PriceProvider[] = [
+  deribitPriceProvider,
+  yahooPriceProvider,
+  mockPriceProvider,
+];
 
 export type DataMode = "live" | "mock" | "auto";
 
@@ -65,6 +82,12 @@ function pickPriceProvider(asset: AssetConfig, mode: DataMode): PriceProvider {
   return mockPriceProvider;
 }
 
+function chainTtl(provider: ChainProvider): number {
+  if (provider.id === "cboe") return TTL.cboeChain;
+  if (provider.id === "deribit") return TTL.deribitChain;
+  return 2_000;
+}
+
 function mockProvenance(asset: AssetConfig, reason: string): Provenance {
   const now = Date.now();
   return {
@@ -79,6 +102,15 @@ function mockProvenance(asset: AssetConfig, reason: string): Provenance {
   };
 }
 
+function staleOf(provenance: Provenance, stale: boolean): Provenance {
+  if (!stale) return provenance;
+  return {
+    ...provenance,
+    stale: true,
+    source: `${provenance.source} · dernier cache`,
+  };
+}
+
 /* ------------------------------------------------------------- providers -- */
 
 export async function getChainResult(
@@ -86,19 +118,25 @@ export async function getChainResult(
 ): Promise<ProviderResult<ChainSnapshot>> {
   const mode = dataMode();
   const provider = pickChainProvider(asset, mode);
-  const ttl = provider.id === "mock" ? 2_000 : TTL.deribitChain;
-  const result = await cached(
-    `chain:${provider.id}:${asset.id}`,
-    ttl,
-    () => provider.getChain(asset),
-    { staleWhileError: true },
-  );
-  const provenance = { ...result.value.provenance };
-  if (result.stale) {
-    provenance.stale = true;
-    provenance.source = `${provenance.source} · ${"dernier cache"}`;
+  try {
+    const result = await cached(
+      `chain:${provider.id}:${asset.id}`,
+      chainTtl(provider),
+      () => provider.getChain(asset),
+      { staleWhileError: true },
+    );
+    return {
+      data: result.value.data,
+      provenance: staleOf({ ...result.value.provenance }, result.stale),
+    };
+  } catch (error) {
+    if (mode === "live") throw error;
+    const fallback = await mockChainProvider.getChain(asset);
+    return {
+      data: fallback.data,
+      provenance: mockProvenance(asset, `source ${provider.name} indisponible`),
+    };
   }
-  return { data: result.value.data, provenance };
 }
 
 export async function getQuoteResult(
@@ -113,8 +151,10 @@ export async function getQuoteResult(
       () => provider.getQuote(asset),
       { staleWhileError: true },
     );
-    const provenance = { ...result.value.provenance, stale: result.stale };
-    return { data: result.value.data, provenance };
+    return {
+      data: result.value.data,
+      provenance: staleOf({ ...result.value.provenance }, result.stale),
+    };
   } catch (error) {
     if (mode === "live") throw error;
     const now = Date.now();
@@ -139,16 +179,29 @@ export async function getCandleSeries(
 ): Promise<ProviderResult<CandleSeries>> {
   const mode = dataMode();
   const provider = pickPriceProvider(asset, mode);
-  const result = await cached(
-    `candles:${provider.id}:${asset.id}:${interval}`,
-    provider.id === "mock" ? 2_000 : TTL.candles,
-    () => provider.getCandles(asset, interval, range),
-    { staleWhileError: true },
-  );
-  return {
-    data: result.value.data,
-    provenance: { ...result.value.provenance, stale: result.stale },
-  };
+  try {
+    const result = await cached(
+      `candles:${provider.id}:${asset.id}:${interval}:${Math.floor(range.from / 60_000)}`,
+      provider.id === "mock" ? 2_000 : TTL.candles,
+      () => provider.getCandles(asset, interval, range),
+      { staleWhileError: true },
+    );
+    return {
+      data: result.value.data,
+      provenance: staleOf({ ...result.value.provenance }, result.stale),
+    };
+  } catch (error) {
+    if (mode === "live") throw error;
+    const fallback = await mockPriceProvider.getCandles(asset, interval, range);
+    return {
+      data: fallback.data,
+      provenance: mockProvenance(asset, "bougies indisponibles"),
+    };
+  }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /* ------------------------------------------------------- snapshot GEX --- */
@@ -187,14 +240,15 @@ export async function getGexSnapshot(
   return snapshot;
 }
 
-async function buildDirectSnapshot(
+/** Assemble un snapshot à partir d'une chaîne déjà chargée. */
+function snapshotFromChain(
   asset: AssetConfig,
   filter: ExpiryFilter,
-): Promise<GexSnapshot> {
-  const chainResult = await getChainResult(asset);
-  const { spot, contracts, prevClose } = chainResult.data;
-  const core = computeGexCore(contracts, {
-    spot,
+  chain: ChainSnapshot,
+  provenance: Provenance,
+): GexSnapshot {
+  const core = computeGexCore(chain.contracts, {
+    spot: chain.spot,
     multiplier: asset.multiplier,
     filter,
   });
@@ -202,8 +256,8 @@ async function buildDirectSnapshot(
     assetId: asset.id,
     symbol: asset.symbol,
     filter,
-    spot,
-    prevClose,
+    spot: chain.spot,
+    prevClose: chain.prevClose,
     netGex: core.netGex,
     grossGex: core.byStrike.reduce(
       (acc, s) => acc + Math.abs(s.callGex) + Math.abs(s.putGex),
@@ -217,8 +271,16 @@ async function buildDirectSnapshot(
     expiries: core.expiries,
     contracts: core.contracts,
     totalOi: core.totalOi,
-    provenance: chainResult.provenance,
+    provenance,
   };
+}
+
+async function buildDirectSnapshot(
+  asset: AssetConfig,
+  filter: ExpiryFilter,
+): Promise<GexSnapshot> {
+  const chainResult = await getChainResult(asset);
+  return snapshotFromChain(asset, filter, chainResult.data, chainResult.provenance);
 }
 
 /**
@@ -259,11 +321,10 @@ async function buildProxySnapshot(
   });
 
   const spot = futuresQuote.data.price;
-  const levels = core.levels.map((level) => ({
-    ...level,
-    price: scale(level.price),
-    distancePct: (scale(level.price) / spot - 1) * 100,
-  }));
+  const levels = core.levels.map((level) => {
+    const price = scale(level.price);
+    return { ...level, price, distancePct: (price / spot - 1) * 100 };
+  });
   const byStrike = core.byStrike.map((row) => ({
     ...row,
     strike: scale(row.strike),
@@ -379,7 +440,10 @@ export async function getBoard(assets: readonly AssetConfig[]): Promise<BoardRow
 }
 
 /**
- * Flux d'options (Deribit temps réel côté navigateur ; repli REST/fixtures).
+ * Flux d'options. Crypto : trades Deribit réels (REST côté serveur, WS côté
+ * navigateur). Indices : aucune source de prints gratuite (CBOE ne publie que
+ * des snapshots) — l'onglet indices affiche une activité Δvolume, libellée
+ * comme telle.
  * `now` est fourni par la couche données : les composants restent purs et
  * calculent leurs libellés d'échéance à partir de cet instant.
  */
@@ -388,14 +452,57 @@ export async function getFlow(
   limit = 60,
 ): Promise<{ trades: FlowTrade[]; provenance: Provenance; now: number }> {
   const now = Date.now();
-  const trades = mockFlow(asset, limit, now);
-  return { trades, provenance: mockProvenance(asset, "flux simulé"), now };
+  const mode = dataMode();
+
+  if (mode !== "mock" && asset.chainSource === "deribit") {
+    try {
+      const result = await cached(
+        `flow:${asset.id}:${limit}`,
+        5_000,
+        () => fetchDeribitFlow(asset, limit),
+        { staleWhileError: true },
+      );
+      return {
+        trades: result.value.data,
+        provenance: staleOf({ ...result.value.provenance }, result.stale),
+        now,
+      };
+    } catch (error) {
+      if (mode === "live") throw error;
+      console.warn("[flow] Deribit indisponible, repli fixtures :", messageOf(error));
+    }
+  }
+
+  return {
+    trades: mockFlow(asset, limit, now),
+    provenance: mockProvenance(asset, "flux simulé"),
+    now,
+  };
 }
 
 /** Dark pool ATS hebdomadaire FINRA. */
 export async function getDarkPoolSnapshot(
   symbols: readonly string[],
 ): Promise<{ snapshot: DarkPoolSnapshot; provenance: Provenance }> {
+  const mode = dataMode();
+  if (mode !== "mock") {
+    try {
+      const result = await cached(
+        `darkpool:${[...symbols].sort().join(",")}`,
+        TTL.finra,
+        () => fetchFinraDarkPool(symbols),
+        { staleWhileError: true },
+      );
+      return {
+        snapshot: result.value.data,
+        provenance: staleOf({ ...result.value.provenance }, result.stale),
+      };
+    } catch (error) {
+      if (mode === "live") throw error;
+      console.warn("[darkpool] FINRA indisponible, repli fixtures :", messageOf(error));
+    }
+  }
+
   const now = Date.now();
   return {
     snapshot: mockDarkPool(symbols, now),

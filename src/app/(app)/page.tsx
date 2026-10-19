@@ -13,6 +13,10 @@ import { GexBars } from "@/ui/GexBars";
 
 export const dynamic = "force-dynamic";
 
+// Les chaînes CBOE (jusqu’à 13 Mo) peuvent être lentes à froid : on laisse
+// de la marge au rendu serveur plutôt que de couper la requête.
+export const maxDuration = 60;
+
 /**
  * Les données sont attendues dans le composant de page (pas de `loading.tsx`,
  * pas de <Suspense> autour du contenu) : c'est la seule configuration où

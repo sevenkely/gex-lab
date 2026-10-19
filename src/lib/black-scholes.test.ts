@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bsDelta, bsGamma, bsPrice, d1, normCdf, normPdf } from "./black-scholes";
+import { bsDelta, bsGamma, bsImpliedVol, bsPrice, d1, normCdf, normPdf } from "./black-scholes";
 
 describe("normCdf / normPdf", () => {
   // Valeurs de référence classiques (tables statistiques), tolérance 1e-6 :
@@ -82,5 +82,36 @@ describe("bsPrice / bsDelta", () => {
   it("d1 est cohérent avec d2", () => {
     const value = d1(100, 100, 0.25, 0.2);
     expect(value).toBeCloseTo(0.5 * 0.2 * Math.sqrt(0.25), 12);
+  });
+});
+
+describe("bsImpliedVol", () => {
+  // Vérification de l'inversion : prix Black-Scholes connu → IV retrouvée.
+  it("retrouve la volatilité utilisée pour pricer (call ATM 30 j)", () => {
+    const S = 7659.44;
+    const K = 7650;
+    const T = 30 / 365;
+    const price = bsPrice(S, K, T, 0.186, "call");
+    const iv = bsImpliedVol(price, S, K, T, "call");
+    expect(iv).not.toBeNull();
+    expect(iv as number).toBeCloseTo(0.186, 4);
+  });
+
+  it("fonctionne aussi sur les puts et les options hors de la monnaie", () => {
+    for (const [K, sigma, type] of [
+      [7000, 0.32, "put"],
+      [8200, 0.21, "call"],
+    ] as const) {
+      const price = bsPrice(7659.44, K, 0.12, sigma, type);
+      const iv = bsImpliedVol(price, 7659.44, K, 0.12, type);
+      expect(iv).not.toBeNull();
+      expect(iv as number).toBeCloseTo(sigma, 3);
+    }
+  });
+
+  it("renvoie null pour un prix sous l'intrinsèque ou une entrée dégénérée", () => {
+    expect(bsImpliedVol(10, 7659, 7000, 0.1, "call")).toBeNull();
+    expect(bsImpliedVol(0, 7659, 7650, 0.1, "call")).toBeNull();
+    expect(bsImpliedVol(50, 7659, 7650, 0, "call")).toBeNull();
   });
 });

@@ -34,7 +34,7 @@ export function DataBadge({
   return (
     <span
       title={tooltip}
-      className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-tx2"
+      className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[10px] text-tx2"
     >
       <span className={provenance.demo ? "text-zero" : ""}>{provenance.source}</span>
       {!compact && <span aria-hidden="true">·</span>}
@@ -42,7 +42,7 @@ export function DataBadge({
       {flags.map((flag) => (
         <span
           key={flag}
-          className={`rounded border border-line px-1.5 py-px tracking-wide uppercase ${
+          className={`rounded border border-line px-1.5 py-px tracking-wide whitespace-nowrap uppercase ${
             flag === "DÉMO" ? "text-zero" : provenance.stale ? "text-put" : "text-tx2"
           }`}
         >

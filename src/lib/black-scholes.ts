@@ -75,6 +75,41 @@ export function bsPrice(
   return K * disc * normCdf(-D2) - S * carry * normCdf(-D1);
 }
 
+/**
+ * Volatilité implicite par Newton-Raphson (12 itérations, σ ∈ ]0 ; 5]).
+ *
+ * Utilisée pour CBOE : le champ `iv` de l'API différée ne correspond PAS aux
+ * prix cotés (vérifié : ATM 30 j coté ≈ 18,6 % alors que le champ vaut
+ * 0,147 %). On recalcule donc l'IV depuis le mid bid/ask, et on renvoie null
+ * si l'inversion échoue (prix sous l'intrinsèque, quote absente).
+ */
+export function bsImpliedVol(
+  price: number,
+  S: number,
+  K: number,
+  T: number,
+  type: "call" | "put",
+  r = 0,
+): number | null {
+  if (!(price > 0) || !(S > 0) || !(K > 0) || !(T > 0)) return null;
+  const intrinsic =
+    type === "call" ? Math.max(0, S - K) * Math.exp(-r * T) : Math.max(0, K - S) * Math.exp(-r * T);
+  if (price < intrinsic * 0.999) return null;
+
+  let sigma = 0.3;
+  for (let i = 0; i < 12; i++) {
+    const model = bsPrice(S, K, T, sigma, type, r);
+    const diff = model - price;
+    if (Math.abs(diff) < 1e-4) break;
+    const vega = S * normPdf(d1(S, K, T, sigma, r)) * Math.sqrt(T);
+    if (!(vega > 1e-8)) return null;
+    const next = sigma - diff / vega;
+    if (!(next > 0.001) || next > 5) return null;
+    sigma = next;
+  }
+  return sigma > 0.001 && sigma < 5 ? sigma : null;
+}
+
 /** Delta (pour le contrôle de cohérence des chaînes). */
 export function bsDelta(
   S: number,

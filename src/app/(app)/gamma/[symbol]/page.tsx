@@ -14,6 +14,10 @@ import { DataBadge } from "@/ui/DataBadge";
 
 export const dynamic = "force-dynamic";
 
+// Les chaînes CBOE (jusqu’à 13 Mo) peuvent être lentes à froid : on laisse
+// de la marge au rendu serveur plutôt que de couper la requête.
+export const maxDuration = 60;
+
 type PageParams = { symbol: string };
 type PageSearch = Record<string, string | string[] | undefined>;
 

@@ -22,5 +22,8 @@ export default defineConfig({
     environment: "node",
     globals: true,
     reporters: ["default"],
+    // Les tests ne touchent jamais le réseau : le registre utilise les fixtures.
+    // Les providers réels sont vérifiés hors CI (scripts + routes API).
+    env: { DATA_MODE: "mock" },
   },
 });

@@ -28,18 +28,21 @@ export function RegimePanel({
       : null;
 
   return (
-    <div className="w-[300px] p-4 max-md:w-auto">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-[15px] font-semibold">{label}</div>
-          <div className="num mt-0.5 text-[11px] text-tx2">
-            {snapshot.symbol} / USD · {sourceLabel ?? snapshot.provenance.source}
-          </div>
-        </div>
-        <DataBadge provenance={snapshot.provenance} compact estimated />
+    <div className="w-full p-4">
+      <div className="text-[15px] font-semibold">{label}</div>
+      <div className="num mt-0.5 text-[11px] text-tx2">{snapshot.symbol} / USD</div>
+      {/* Provenance sur sa propre ligne : le badge (source + drapeaux) ne doit
+          pas comprimer le titre dans une colonne de 300 px. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <DataBadge
+          provenance={snapshot.provenance}
+          compact
+          estimated
+        />
+        {sourceLabel && <span className="num text-[10px] text-tx2">{sourceLabel}</span>}
       </div>
 
-      <div className="num mt-3 text-[30px] leading-none font-semibold tracking-[-0.01em]">
+      <div className="num mt-4 text-[30px] leading-[1.1] font-semibold tracking-[-0.01em]">
         <NumberRoll
           value={snapshot.spot}
           format={{ kind: "price", decimals }}
