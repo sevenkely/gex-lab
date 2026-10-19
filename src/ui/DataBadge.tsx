@@ -1,4 +1,4 @@
-import { fmtDelay, fmtAgo } from "@/lib/format";
+import { fmtDelay } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import type { Provenance } from "@/server/providers/types";
 
@@ -24,11 +24,13 @@ export function DataBadge({
   if (estimated) flags.push(tr.badges.estimated);
   if (provenance.stale) flags.push(tr.badges.stale);
 
+  // Horodatages absolus uniquement : une durée relative (« il y a 3 s »)
+  // diverge entre le rendu serveur et l'hydratation → mismatch React.
   const tooltip = [
     `${tr.common.source} : ${provenance.source}`,
     `${tr.common.latency} : ${fmtDelay(provenance.delayMs)}`,
     `${tr.common.asOf} : ${new Date(provenance.asOf).toISOString()}`,
-    `Récupéré ${fmtAgo(provenance.fetchedAt)}`,
+    `Récupéré : ${new Date(provenance.fetchedAt).toISOString()}`,
   ].join("\n");
 
   return (

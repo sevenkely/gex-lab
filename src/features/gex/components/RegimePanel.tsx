@@ -2,7 +2,7 @@ import { fmt, fmtPct } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { DataBadge } from "@/ui/DataBadge";
 import { NumberRoll } from "@/ui/NumberRoll";
-import type { GexSnapshot } from "../types";
+import type { GexLevelKind, GexSnapshot } from "../types";
 import { LevelCards } from "./LevelCards";
 import { RegimeBadge } from "./RegimeBadge";
 
@@ -15,11 +15,14 @@ export function RegimePanel({
   label,
   decimals = 2,
   sourceLabel,
+  onHighlight,
 }: {
   snapshot: GexSnapshot;
   label: string;
   decimals?: number;
   sourceLabel?: string;
+  /** Survol d'une carte de niveau : le graphique met la bande en avant. */
+  onHighlight?: (kind: GexLevelKind | null) => void;
 }) {
   const tr = t();
   const changePct =
@@ -73,7 +76,12 @@ export function RegimePanel({
       </div>
 
       <SectionTitle left={tr.levels.title} right={tr.levels.priceDistance} />
-      <LevelCards levels={snapshot.levels} spot={snapshot.spot} decimals={decimals} />
+      <LevelCards
+        levels={snapshot.levels}
+        spot={snapshot.spot}
+        decimals={decimals}
+        onHover={onHighlight}
+      />
 
       {snapshot.proxy && (
         <p className="mt-3 border-t border-line pt-3 text-[11px] text-tx2">

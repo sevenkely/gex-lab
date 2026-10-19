@@ -1,15 +1,14 @@
 import { notFound } from "next/navigation";
 import { getAsset } from "@/config/assets";
 import { AssetTabs } from "@/features/chart/components/AssetTabs";
+import { ChartWorkspace } from "@/features/chart/components/ChartWorkspace";
 import { IntervalTabs } from "@/features/chart/components/IntervalTabs";
 import { AutoRegime } from "@/features/gex/components/AutoRegime";
 import { ExpiryFilterTabs } from "@/features/gex/components/ExpiryFilterTabs";
-import { RegimePanel } from "@/features/gex/components/RegimePanel";
-import { t } from "@/lib/i18n";
 import { firstParam, parseExpiryFilter, parseInterval } from "@/lib/params";
-import { getGexSnapshot } from "@/server/registry";
+import type { CandleInterval } from "@/server/providers/types";
+import { getCandleSeries, getGexSnapshot } from "@/server/registry";
 import { DataBadge } from "@/ui/DataBadge";
-import { Skeleton } from "@/ui/Skeleton";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +18,30 @@ export const maxDuration = 60;
 
 type PageParams = { symbol: string };
 type PageSearch = Record<string, string | string[] | undefined>;
+
+/** Fenêtre chargée par unité de temps (heures). */
+const HOURS: Record<CandleInterval, number> = {
+  "1m": 6,
+  "5m": 24,
+  "15m": 72,
+  "1H": 240,
+  "1D": 8_760,
+};
+
+/** Charge les données du graphique (hors rendu : pas d'appel impur dans le composant). */
+async function loadChart(
+  asset: NonNullable<ReturnType<typeof getAsset>>,
+  filter: ReturnType<typeof parseExpiryFilter>,
+  interval: CandleInterval,
+) {
+  const to = Date.now();
+  const from = to - HOURS[interval] * 3_600_000;
+  const [snapshot, candleResult] = await Promise.all([
+    getGexSnapshot(asset.id, { filter }),
+    getCandleSeries(asset, interval, { from, to }),
+  ]);
+  return { snapshot, candles: candleResult.data.candles };
+}
 
 export default async function ChartPage({
   params,
@@ -34,8 +57,7 @@ export default async function ChartPage({
 
   const filter = parseExpiryFilter(firstParam(search.exp));
   const interval = parseInterval(firstParam(search.tf));
-  const snapshot = await getGexSnapshot(asset.id, { filter });
-  const tr = t();
+  const { snapshot, candles } = await loadChart(asset, filter, interval);
 
   return (
     <div className="flex h-full flex-col max-md:overflow-auto">
@@ -49,26 +71,13 @@ export default async function ChartPage({
         <DataBadge provenance={snapshot.provenance} estimated />
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[1fr_300px]">
-        <div className="relative min-h-[320px] border-b border-line lg:border-b-0">
-          {/* Phase 3 : lightweight-charts + primitive de bandes GEX */}
-          <div className="absolute inset-0 grid place-items-center p-6">
-            <div className="w-full max-w-[520px]">
-              <p className="mb-3 text-center text-xs text-tx2">{tr.chart.loading}</p>
-              <Skeleton className="h-3 w-2/3" />
-              <Skeleton className="mt-2 h-3 w-1/2" />
-              <Skeleton className="mt-6 h-40 w-full" />
-            </div>
-          </div>
-        </div>
-        <aside className="min-w-0 overflow-y-auto border-line lg:border-l">
-          <RegimePanel
-            snapshot={snapshot}
-            label={asset.label}
-            decimals={asset.priceDecimals}
-          />
-        </aside>
-      </div>
+      <ChartWorkspace
+        snapshot={snapshot}
+        candles={candles}
+        interval={interval}
+        label={asset.label}
+        decimals={asset.priceDecimals}
+      />
     </div>
   );
 }
