@@ -94,9 +94,13 @@ const SHARED_KEY_PREFIX = "gexlab:v1:";
 /**
  * Plafond d'un enregistrement. Les requêtes REST Upstash sont limitées en
  * taille ; au-delà on n'écrit pas plutôt que d'échouer à chaque appel.
- * Les chaînes compressées réelles tiennent largement en dessous.
+ *
+ * Mesure sur la vraie base : la chaîne SPX complète (21 000 contrats, OI > 0)
+ * pèse 946 Ko une fois compressée — au-dessus du plafond d'1 Mo d'une requête
+ * REST historique, en dessous de la limite actuelle. D'où 3 Mo : les deux plus
+ * grosses chaînes (SPX, NDX) passent, et une valeur aberrante reste bloquée.
  */
-const MAX_SHARED_VALUE_BYTES = 900_000;
+const MAX_SHARED_VALUE_BYTES = 3_000_000;
 
 /** Lectures/écritures bornées : un cache lent ne doit pas retarder un rendu. */
 const READ_TIMEOUT_MS = 1_500;
@@ -180,7 +184,12 @@ export function createUpstashDriver(config: UpstashConfig): CacheDriver {
     },
     async set(key, value, ttlMs) {
       const payload = encodeShared(value);
-      if (payload.length > MAX_SHARED_VALUE_BYTES) return;
+      if (payload.length > MAX_SHARED_VALUE_BYTES) {
+        console.warn(
+          `[cache] ${key} non partagé : ${payload.length} octets compressés > ${MAX_SHARED_VALUE_BYTES}`,
+        );
+        return;
+      }
       await command(
         ["SET", SHARED_KEY_PREFIX + key, payload, "PX", driverTtl(ttlMs)],
         WRITE_TIMEOUT_MS,

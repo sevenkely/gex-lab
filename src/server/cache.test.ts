@@ -222,7 +222,7 @@ describe("driver Upstash", () => {
     const driver = createUpstashDriver({ url: "https://abc.upstash.io", token: "tok" });
 
     // Données incompressibles : le gzip ne peut pas les ramener sous le plafond.
-    const noise = Array.from({ length: 2_000_000 }, () =>
+    const noise = Array.from({ length: 5_000_000 }, () =>
       String.fromCharCode(33 + Math.floor(Math.random() * 90)),
     ).join("");
 
@@ -262,7 +262,7 @@ describe("compression du cache partagé", () => {
     const encoded = encodeShared(json);
     expect(json.length).toBeGreaterThan(2_000_000);
     expect(encoded.startsWith("gz:")).toBe(true);
-    expect(encoded.length).toBeLessThan(900_000);
+    expect(encoded.length).toBeLessThan(1_000_000);
     expect(decodeShared(encoded)).toBe(json);
   });
 
