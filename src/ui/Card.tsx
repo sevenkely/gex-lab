@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 /** Panneau de base : surface translucide, bordure fine, flou d'arrière-plan. */
 export function Card({
@@ -8,6 +8,7 @@ export function Card({
   title,
   subtitle,
   aside,
+  style,
 }: {
   children?: ReactNode;
   className?: string;
@@ -15,10 +16,12 @@ export function Card({
   title?: ReactNode;
   subtitle?: ReactNode;
   aside?: ReactNode;
+  style?: CSSProperties;
 }) {
   return (
     <section
       className={`panel ${padded ? "p-3.5" : ""} ${className}`}
+      style={style}
       aria-label={typeof title === "string" ? title : undefined}
     >
       {(title || aside) && (

@@ -18,8 +18,19 @@ import {
   type AssetConfig,
   type ExpiryFilter,
 } from "@/config/assets";
-import { computeGexCore } from "@/features/gex/compute";
-import type { GexSnapshot } from "@/features/gex/types";
+import {
+  aggregateByStrikeExpiry,
+  computeGexCore,
+  filterContracts,
+  frontExpiries as frontExpiriesOf,
+  type StrikeExpiryMatrix,
+} from "@/features/gex/compute";
+import { computeSession } from "@/features/gex/session-levels";
+import type {
+  GexSnapshot,
+  SessionLevel,
+  SessionProfileBucket,
+} from "@/features/gex/types";
 import { computeRatio } from "@/lib/ratios";
 import { cached, TTL } from "./cache";
 import {
@@ -247,10 +258,12 @@ function snapshotFromChain(
   chain: ChainSnapshot,
   provenance: Provenance,
 ): GexSnapshot {
+  const now = Date.now();
   const core = computeGexCore(chain.contracts, {
     spot: chain.spot,
     multiplier: asset.multiplier,
     filter,
+    now,
   });
   return {
     assetId: asset.id,
@@ -259,14 +272,21 @@ function snapshotFromChain(
     spot: chain.spot,
     prevClose: chain.prevClose,
     netGex: core.netGex,
+    netDex: core.netDex,
+    frontExpiries: frontExpiriesOf(chain.contracts, now),
     grossGex: core.byStrike.reduce(
       (acc, s) => acc + Math.abs(s.callGex) + Math.abs(s.putGex),
       0,
     ),
+    positiveGex: core.split.positive,
+    negativeGex: core.split.negative,
+    maxPain: core.maxPain,
     regime: core.regime,
     zeroGamma: core.zeroGamma,
     levels: core.levels,
     byStrike: core.byStrike,
+    sessionLevels: [],
+    sessionProfile: [],
     expectedMove: core.expectedMove,
     expiries: core.expiries,
     contracts: core.contracts,
@@ -275,12 +295,54 @@ function snapshotFromChain(
   };
 }
 
+/**
+ * Niveaux de la séance précédente, calculés depuis les bougies 5 min du future.
+ *
+ * Mis en cache séparément (5 min) : la séance ne change qu'au fil de l'eau,
+ * alors que le snapshot GEX est recalculé toutes les 60 s. En cas d'échec ou de
+ * fixtures, on renvoie une liste vide : le graphique reste lisible sans elles.
+ */
+interface SessionData {
+  levels: SessionLevel[];
+  profile: SessionProfileBucket[];
+}
+
+const EMPTY_SESSION: SessionData = { levels: [], profile: [] };
+
+async function sessionLevelsFor(asset: AssetConfig): Promise<SessionData> {
+  if (asset.assetClass !== "future") return EMPTY_SESSION;
+  try {
+    const result = await cached(
+      `session:${asset.id}`,
+      5 * 60_000,
+      async (): Promise<SessionData> => {
+        const to = Date.now();
+        const from = to - 8 * 86_400_000;
+        const series = await getCandleSeries(asset, "5m", { from, to });
+        if (series.provenance.demo) return EMPTY_SESSION;
+        return computeSession(series.data.candles, to);
+      },
+      { staleWhileError: true },
+    );
+    return result.value;
+  } catch {
+    return EMPTY_SESSION;
+  }
+}
+
 async function buildDirectSnapshot(
   asset: AssetConfig,
   filter: ExpiryFilter,
 ): Promise<GexSnapshot> {
-  const chainResult = await getChainResult(asset);
-  return snapshotFromChain(asset, filter, chainResult.data, chainResult.provenance);
+  const [chainResult, session] = await Promise.all([
+    getChainResult(asset),
+    sessionLevelsFor(asset),
+  ]);
+  return {
+    ...snapshotFromChain(asset, filter, chainResult.data, chainResult.provenance),
+    sessionLevels: session.levels,
+    sessionProfile: session.profile,
+  };
 }
 
 /**
@@ -299,10 +361,11 @@ async function buildProxySnapshot(
     throw new ProviderError(`Proxy mal configuré pour ${asset.id}`, "not_supported");
   }
 
-  const [chainResult, futuresQuote, underlyingQuote] = await Promise.all([
+  const [chainResult, futuresQuote, underlyingQuote, session] = await Promise.all([
     getChainResult(underlying),
     getQuoteResult(asset),
     getQuoteResult(underlying),
+    sessionLevelsFor(asset),
   ]);
 
   const ratio = computeRatio({
@@ -314,10 +377,12 @@ async function buildProxySnapshot(
   const tick = proxy.tick;
   const scale = (value: number) => roundToTick(value * ratio.ratio, tick);
 
+  const now = Date.now();
   const core = computeGexCore(chainResult.data.contracts, {
     spot: chainResult.data.spot,
     multiplier: underlying.multiplier,
     filter,
+    now,
   });
 
   const spot = futuresQuote.data.price;
@@ -337,14 +402,21 @@ async function buildProxySnapshot(
     spot,
     prevClose: futuresQuote.data.prevClose,
     netGex: core.netGex,
+    netDex: core.netDex,
     grossGex: core.byStrike.reduce(
       (acc, s) => acc + Math.abs(s.callGex) + Math.abs(s.putGex),
       0,
     ),
+    positiveGex: core.split.positive,
+    negativeGex: core.split.negative,
+    maxPain: core.maxPain === null ? null : scale(core.maxPain),
     regime: core.regime,
     zeroGamma: core.zeroGamma === null ? null : scale(core.zeroGamma),
+    frontExpiries: frontExpiriesOf(chainResult.data.contracts, now),
     levels,
     byStrike,
+    sessionLevels: session.levels,
+    sessionProfile: session.profile,
     expectedMove: core.expectedMove
       ? { ...core.expectedMove, points: core.expectedMove.points * ratio.ratio }
       : null,
@@ -360,6 +432,108 @@ async function buildProxySnapshot(
       underlyingSpot: chainResult.data.spot,
     },
   };
+}
+
+/* ---------------------------------------------- matrice strike × échéance -- */
+
+export interface StrikeExpiryMatrixResult {
+  assetId: string;
+  symbol: string;
+  filter: ExpiryFilter;
+  /** Spot affiché (futures pour un proxy). */
+  spot: number;
+  /** Spot utilisé pour le calcul (sous-jacent pour un proxy). */
+  underlyingSpot: number;
+  /** Horodatage du calcul (ms epoch) — sert à repérer le 0DTE. */
+  generatedAt: number;
+  matrix: StrikeExpiryMatrix;
+  provenance: Provenance;
+  proxy?: GexSnapshot["proxy"];
+}
+
+async function buildStrikeExpiryMatrix(
+  asset: AssetConfig,
+  filter: ExpiryFilter,
+): Promise<StrikeExpiryMatrixResult> {
+  const now = Date.now();
+  const proxy = asset.proxy;
+  const underlying = proxy ? getAsset(proxy.underlyingId) : undefined;
+  if (proxy && !underlying) {
+    throw new ProviderError(`Proxy mal configuré pour ${asset.id}`, "not_supported");
+  }
+
+  const chainAsset = underlying ?? asset;
+  const chainResult = await getChainResult(chainAsset);
+  const selected = filterContracts(chainResult.data.contracts, filter, now);
+  const matrix = aggregateByStrikeExpiry(
+    selected,
+    chainResult.data.spot,
+    chainAsset.multiplier,
+    now,
+  );
+
+  if (!proxy || !underlying) {
+    return {
+      assetId: asset.id,
+      symbol: asset.symbol,
+      filter,
+      spot: chainResult.data.spot,
+      underlyingSpot: chainResult.data.spot,
+      generatedAt: now,
+      matrix,
+      provenance: chainResult.provenance,
+    };
+  }
+
+  // Proxy : mêmes niveaux que le sous-jacent, mis à l'échelle du ratio.
+  const [futuresQuote, underlyingQuote] = await Promise.all([
+    getQuoteResult(asset),
+    getQuoteResult(underlying),
+  ]);
+  const ratio = computeRatio({
+    futuresPrice: futuresQuote.data.price,
+    futuresAsOf: futuresQuote.data.asOf,
+    underlyingPrice: underlyingQuote.data.price,
+    underlyingAsOf: underlyingQuote.data.asOf,
+  });
+  const scale = (value: number) => roundToTick(value * ratio.ratio, proxy.tick);
+  return {
+    assetId: asset.id,
+    symbol: asset.symbol,
+    filter,
+    spot: futuresQuote.data.price,
+    underlyingSpot: chainResult.data.spot,
+    generatedAt: now,
+    matrix: {
+      ...matrix,
+      rows: matrix.rows.map((row) => ({ ...row, strike: scale(row.strike) })),
+    },
+    provenance: { ...chainResult.provenance, derived: true },
+    proxy: {
+      underlyingId: underlying.id,
+      ratio: ratio.ratio,
+      tick: proxy.tick,
+      underlyingSpot: chainResult.data.spot,
+    },
+  };
+}
+
+/** Matrice strike × échéance (heatmap) — mise en cache avec la chaîne. */
+export async function getStrikeExpiryMatrix(
+  assetId: string,
+  options: { filter?: ExpiryFilter } = {},
+): Promise<StrikeExpiryMatrixResult> {
+  const asset = getAsset(assetId);
+  if (!asset) throw new ProviderError(`Actif inconnu : ${assetId}`, "not_found");
+  const filter = options.filter ?? "ALL";
+  const provider = pickChainProvider(asset, dataMode());
+  const result = await cached(
+    `matrix:${provider.id}:${asset.id}:${filter}`,
+    chainTtl(provider),
+    () => buildStrikeExpiryMatrix(asset, filter),
+    { staleWhileError: true },
+  );
+  return { ...result.value, provenance: staleOf(result.value.provenance, result.stale) };
 }
 
 /* ------------------------------------------------------------- agrégats -- */

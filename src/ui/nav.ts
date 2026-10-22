@@ -10,37 +10,55 @@ export interface NavItem {
   icon: string;
 }
 
+/**
+ * Jeu d'icônes du rail — une seule famille : grille de 24, trait 1,6 px,
+ * extrémités arrondies, aucune lettre ni pictogramme emprunté (l'ancien « Y »
+ * pour gamma et la banque pour le dark pool ne racontaient pas la donnée).
+ * Chaque tracé représente la vue : tableau de bord, impulsion du flux, deux
+ * bougies, courbe de gamma, couches de liquidité masquée, fiche de méthode.
+ */
 export const NAV_ITEMS: readonly NavItem[] = [
-  { id: "home", href: "/", match: /^\/$/, icon: "M4 11l8-7 8 7v9h-5v-6H9v6H4z" },
+  {
+    id: "home",
+    href: "/",
+    match: /^\/$/,
+    // Tableau de bord : quatre tuiles, pas une maison.
+    icon: "M4 4h6.5v6.5H4zM13.5 4H20v6.5h-6.5zM4 13.5h6.5V20H4zM13.5 13.5H20V20h-6.5z",
+  },
   {
     id: "flow",
     href: "/flux",
     match: /^\/flux/,
-    icon: "M3 8c3-3 6 3 9 0s6 3 9 0M3 15c3-3 6 3 9 0s6 3 9 0",
+    // Impulsion de flux : une ligne d'activité, pas des vagues.
+    icon: "M2.5 12h3.2l2.1-6.4 3.6 12.8L14 9l2 3h5.5",
   },
   {
     id: "chart",
-    href: "/graphique/BTC",
+    href: "/graphique/ES",
     match: /^\/graphique/,
-    icon: "M4 20V4M4 16l5-5 4 3 7-8",
+    // Deux bougies : mèches + corps, la vue réelle de l'onglet.
+    icon: "M6.5 3v4M6.5 15.5V21M6.5 7h3.5v8.5H6.5zM15.5 3v2.5M15.5 12.5V21M15.5 5.5H19V12.5h-3.5z",
   },
   {
     id: "gamma",
-    href: "/gamma/BTC",
+    href: "/gamma/ES",
     match: /^\/gamma/,
-    icon: "M5 4l7 9v7M19 4l-7 9",
+    // Distribution gamma : la cloche, pas la lettre Y.
+    icon: "M2.5 19.5c4.6 0 4.2-14 9.5-14s4.9 14 9.5 14M2.5 19.5h19",
   },
   {
     id: "darkPool",
     href: "/dark-pool",
     match: /^\/dark-pool/,
-    icon: "M3 10l9-6 9 6M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18",
+    // Liquidité en couches : le carnet caché, pas une banque.
+    icon: "M12 3.5l8.5 4.7-8.5 4.8-8.5-4.8zM3.5 12.5l8.5 4.8 8.5-4.8M3.5 16.8l8.5 4.7 8.5-4.7",
   },
   {
     id: "methodology",
     href: "/methodologie",
     match: /^\/methodologie/,
-    icon: "M5 4h14v16H5zM9 8h6M9 12h6M9 16h4",
+    // Fiche annotée : la définition de chaque niveau.
+    icon: "M5 3.5h9.5L19 8v12.5H5zM14 3.5V8h4.5M8.5 12h7M8.5 15.5h7M8.5 19h4",
   },
 ] as const;
 

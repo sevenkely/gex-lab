@@ -16,6 +16,7 @@ const KIND_LABEL: Record<string, string> = {
   putWall: "Put Wall",
   zeroGamma: "Zero Gamma",
   maxGamma: "Max Gamma",
+  maxPain: "Max Pain",
 };
 
 /**
@@ -39,12 +40,17 @@ export async function GET(
 
   try {
     const snapshot = await getGexSnapshot(asset.id, { filter });
-    const rows = snapshot.levels.map((level) => ({
-      label: KIND_LABEL[level.kind] ?? level.kind,
-      kind: level.kind,
-      price: level.price,
-      source: snapshot.provenance.source,
-    }));
+    const rows = snapshot.levels.map((level) => {
+      const base = KIND_LABEL[level.kind] ?? level.kind;
+      const rank = level.rank ?? 1;
+      return {
+        label: rank > 1 ? `${base} ${rank}` : base,
+        kind: level.kind,
+        rank,
+        price: level.price,
+        source: snapshot.provenance.source,
+      };
+    });
 
     if (format === "csv") {
       const header = "niveau,type,prix,source";

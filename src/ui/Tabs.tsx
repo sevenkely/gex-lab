@@ -3,12 +3,15 @@
 /** Onglets avec indicateur qui glisse (mesuré sur le bouton actif). */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 export interface TabItem<T extends string> {
   id: T;
   label: string;
   title?: string;
   color?: string;
+  /** Marque affichée avant le libellé (logo d'actif, icône de filtre). */
+  icon?: ReactNode;
 }
 
 export function Tabs<T extends string>({
@@ -76,11 +79,12 @@ export function Tabs<T extends string>({
             aria-selected={isActive}
             title={item.title}
             onClick={() => onChange(item.id)}
-            className={`accent relative z-1 rounded-md font-semibold whitespace-nowrap ${pad} ${
+            className={`accent relative z-1 inline-flex items-center gap-1.5 rounded-md font-semibold whitespace-nowrap ${pad} ${
               isActive ? "text-tx" : "text-tx2 hover:text-tx"
             }`}
             style={item.color ? { color: isActive ? item.color : undefined } : undefined}
           >
+            {item.icon}
             {item.label}
           </button>
         );

@@ -12,11 +12,14 @@ export function firstParam(raw: string | string[] | undefined): string | undefin
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
-export function parseExpiryFilter(raw: string | string[] | undefined): ExpiryFilter {
-  const value = (firstParam(raw) ?? "ALL").toUpperCase();
+export function parseExpiryFilter(
+  raw: string | string[] | undefined,
+  fallback: ExpiryFilter = "ALL",
+): ExpiryFilter {
+  const value = (firstParam(raw) ?? fallback).toUpperCase();
   return EXPIRY_FILTERS.some((filter) => filter.id === value)
     ? (value as ExpiryFilter)
-    : "ALL";
+    : fallback;
 }
 
 export const INTERVALS: readonly CandleInterval[] = ["1m", "5m", "15m", "1H", "1D"];

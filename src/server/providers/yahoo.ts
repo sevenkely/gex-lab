@@ -72,15 +72,6 @@ const INTERVAL: Record<CandleInterval, string> = {
   "1D": "1d",
 };
 
-function rangeFor(spanMs: number): string {
-  const days = spanMs / 86_400_000;
-  if (days <= 1) return "1d";
-  if (days <= 5) return "5d";
-  if (days <= 30) return "1mo";
-  if (days <= 90) return "3mo";
-  if (days <= 365) return "1y";
-  return "5y";
-}
 
 async function fetchChart(
   symbol: string,
@@ -136,10 +127,13 @@ export async function fetchYahooCandles(
   interval: CandleInterval,
   range: { from: number; to: number },
 ): Promise<ProviderResult<CandleSeries>> {
-  const span = Math.max(60_000, range.to - range.from);
+  // `period1`/`period2` (secondes UNIX) plutôt que `range` : le graphique
+  // charge les périodes précédentes au défilement, et `range=1y` renverrait
+  // toujours la dernière année, jamais la précédente.
   const result = await fetchChart(
     asset.priceSymbol,
-    `range=${rangeFor(span)}&interval=${INTERVAL[interval]}`,
+    `period1=${Math.floor(range.from / 1000)}&period2=${Math.ceil(range.to / 1000)}` +
+      `&interval=${INTERVAL[interval]}&includePrePost=false`,
   );
   const first = result?.[0];
   if (!first) throw new ProviderError("Yahoo Finance — réponse vide", "parse");

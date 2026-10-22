@@ -10,7 +10,7 @@
  */
 
 import type { AssetConfig } from "@/config/assets";
-import { bsGamma } from "@/lib/black-scholes";
+import { bsDelta, bsGamma } from "@/lib/black-scholes";
 import { timeToExpiryYears } from "@/lib/time";
 import type {
   Candle,
@@ -60,6 +60,7 @@ function gauss(rng: () => number): number {
 /** Prix de référence par actif (utilisé uniquement par les fixtures). */
 const REFERENCE: Record<string, { spot: number; vol: number; iv: number; skew: number }> =
   {
+    ES: { spot: 7704.25, vol: 0.004, iv: 0.154, skew: 0.055 },
     BTC: { spot: 82351, vol: 0.0125, iv: 0.52, skew: 0.09 },
     ETH: { spot: 3042, vol: 0.016, iv: 0.61, skew: 0.1 },
     SPX: { spot: 7659.44, vol: 0.004, iv: 0.156, skew: 0.055 },
@@ -174,7 +175,9 @@ function mockChain(asset: AssetConfig, now: number): ChainSnapshot {
         // Les sources type CBOE fournissent le gamma du contrat ; les sources
         // crypto (Deribit) non — le calcul Black-Scholes prend alors le relais.
         if (isCboe) {
-          c.gamma = bsGamma(spot, strike, timeToExpiryYears(expiry, now), ivSide);
+          const T = timeToExpiryYears(expiry, now);
+          c.gamma = bsGamma(spot, strike, T, ivSide);
+          c.delta = Math.abs(bsDelta(spot, strike, T, ivSide, type));
         }
         contracts.push(c);
       };

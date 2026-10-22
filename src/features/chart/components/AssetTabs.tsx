@@ -3,24 +3,29 @@
 /** Onglets d'actif : navigation par URL, indicateur glissant. */
 
 import { useRouter } from "next/navigation";
-import { ASSETS } from "@/config/assets";
+import { CHART_ASSETS } from "@/config/assets";
+import { AssetMark } from "@/ui/AssetMark";
 import { Tabs } from "@/ui/Tabs";
 
+/**
+ * Seuls les actifs chartés sont proposés. Les chaînes d'options pures (SPX,
+ * SPY, QQQ, GLD) restent des sources côté registre mais redirigent vers le
+ * future correspondant : on ne trade pas l'ETF, on trade le contrat.
+ */
 export function AssetTabs({
   view,
   current,
-  onlyPrimary = false,
 }: {
   view: "chart" | "gamma";
   current: string;
-  onlyPrimary?: boolean;
 }) {
   const router = useRouter();
-  const assets = onlyPrimary ? ASSETS.filter((a) => a.primary) : ASSETS;
+  const assets = CHART_ASSETS;
   const items = assets.map((asset) => ({
     id: asset.id,
     label: asset.symbol,
     title: asset.label,
+    icon: <AssetMark assetId={asset.id} size={16} />,
   }));
 
   return (

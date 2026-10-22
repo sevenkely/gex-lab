@@ -1,13 +1,14 @@
 /* ==========================================================================
    Gamma Field — tokens de design
-   L'accent --ac suit le régime (long = turquoise, short = braise) et anime
-   l'ensemble de l'interface via une transition de couleur personnalisée.
+   Convention Binance : vert = pression acheteuse / long gamma, rouge = pression
+   vendeuse / short gamma. L'accent --ac suit le régime et anime l'interface
+   via une transition de couleur personnalisée.
    ========================================================================== */
 
 @property --ac {
   syntax: "<color>";
   inherits: true;
-  initial-value: #2dd4bf;
+  initial-value: #0ecb81;
 }
 
 :root {
@@ -23,21 +24,27 @@
   --tx: #e6ecf5;
   --tx2: #8b97ad;
 
-  /* niveaux GEX (rgb pour composition d'alpha) */
-  --call: 45, 212, 191;
-  --put: 255, 107, 74;
+  /* niveaux GEX (rgb pour composition d'alpha) — vert calls, rouge puts */
+  --call: 14, 203, 129;
+  --put: 246, 70, 93;
   --zero: 232, 216, 168;
 
-  /* bougies : jamais de rouge/vert — blanc froid vs bleu ardoise */
-  --candle-up: #e6ecf5;
-  --candle-down: #6f7fa3;
+  /* bougies : vert hausse / rouge baisse (lecture directionnelle, convention
+     de marché) — le corps des bougies reste lisible sur le fond sombre. */
+  --candle-up: #0ecb81;
+  --candle-down: #f6465d;
 
   /* régime : l'accent principal + la variante opposée */
-  /* régime : la variable est posée en clair (pas de var() intermédiaire) et
-     l'accent du régime court est le même turquoise/braise que le logo. */
-  --ac-long-c: #2dd4bf;
-  --ac-short-c: #ff6b4a;
-  --ac: #2dd4bf;
+  /* régime : la variable est posée en clair (pas de var() intermédiaire). */
+  --ac-long-c: #0ecb81;
+  --ac-short-c: #f6465d;
+  --ac: #0ecb81;
+
+  /* largeur du ladder de strikes, à droite du graphique (desktop) : large,
+     parce que trois colonnes de barres ont besoin de place pour se lire.
+     Le champ de bougies est volontairement plus étroit que le ladder — on lit
+     les niveaux (strike, net DEX, net GEX, net OI) avant le prix. */
+  --ladder-w: clamp(440px, 47vw, 800px);
 
   /* mouvement */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -58,7 +65,7 @@
  * sans blocage.
  */
 html[data-regime="short"] {
-  --ac: #ff6b4a;
+  --ac: #f6465d;
 }
 
 .accent {
@@ -72,8 +79,8 @@ html[data-regime="short"] {
 
 /* teinte des niveaux, exposée aussi aux graphiques canvas */
 :root {
-  --call-rgb: 45, 212, 191;
-  --put-rgb: 255, 107, 74;
+  --call-rgb: 14, 203, 129;
+  --put-rgb: 246, 70, 93;
   --zero-rgb: 232, 216, 168;
 }
 
@@ -218,9 +225,48 @@ html[data-regime="short"] #glow .glow-short {
   }
 }
 
+/* Filet de masthead : balayage de gauche à droite */
+.rule-sweep {
+  animation: rule-sweep 900ms var(--ease) 80ms backwards;
+}
+
+@keyframes rule-sweep {
+  from {
+    opacity: 0.2;
+    transform: scaleX(0);
+  }
+}
+
+/* Métrique de synthèse */
+.stat-in {
+  animation: stat-in 520ms var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+@keyframes stat-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Cellule de heatmap : arrivée en cascade par colonne */
+.cell-in {
+  animation: cell-in 520ms var(--ease) backwards;
+  animation-delay: calc(var(--c, 0) * 35ms + var(--r, 0) * 12ms);
+}
+
+@keyframes cell-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+}
+
 /* Entrée d'une ligne de flux : glissement + flash d'accent */
 .row-in {
   animation: row-in 700ms var(--ease) backwards;
+  animation-delay: calc(var(--i, 0) * 18ms);
 }
 
 @keyframes row-in {

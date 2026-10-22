@@ -3,7 +3,10 @@ import { t } from "@/lib/i18n";
 import { DataBadge } from "@/ui/DataBadge";
 import { NumberRoll } from "@/ui/NumberRoll";
 import type { GexLevelKind, GexSnapshot } from "../types";
+import { FilterEmpty } from "./FilterEmpty";
+import { GexSplitBar } from "./GexSplitBar";
 import { LevelCards } from "./LevelCards";
+import { MarketRead } from "./MarketRead";
 import { RegimeBadge } from "./RegimeBadge";
 
 /**
@@ -58,30 +61,54 @@ export function RegimePanel({
         </div>
       )}
 
-      <SectionTitle left={tr.home.regimeOfDay} right={tr.badges.estimated} />
-      <RegimeBadge regime={snapshot.regime} className="mb-3.5" />
+      {snapshot.contracts === 0 ? (
+        /* Filtre vide : afficher +0 $ et « Long gamma » serait faux. */
+        <FilterEmpty
+          symbol={snapshot.symbol}
+          filter={snapshot.filter}
+          className="mt-4"
+        />
+      ) : (
+        <>
+          <SectionTitle left={tr.home.regimeOfDay} right={tr.badges.estimated} />
+          <RegimeBadge regime={snapshot.regime} className="mb-3.5" />
 
-      <div className="text-[11px] text-tx2">
-        {tr.metrics.netGexPer1pct ?? tr.metrics.netGex}
-      </div>
-      <div className="num mt-0.5 mb-3 text-[26px] font-semibold text-zero">
-        <NumberRoll value={snapshot.netGex} format={{ kind: "gex" }} duration={900} />
-      </div>
+          {/* Traduction immédiate du régime et des murs en trois phrases. */}
+          <MarketRead snapshot={snapshot} decimals={decimals} />
 
-      <div className="text-[11px] text-tx2">{tr.metrics.expectedMove}</div>
-      <div className="num mt-0.5 text-[15px]">
-        {snapshot.expectedMove
-          ? `± ${fmt(snapshot.expectedMove.points, decimals)} (${fmt(snapshot.expectedMove.pct, 2)} %)`
-          : "—"}
-      </div>
+          <div className="text-[11px] text-tx2">
+            {tr.metrics.netGexPer1pct ?? tr.metrics.netGex}
+          </div>
+          <div className="num mt-0.5 mb-3 text-[26px] font-semibold text-zero">
+            <NumberRoll value={snapshot.netGex} format={{ kind: "gex" }} duration={900} />
+          </div>
 
-      <SectionTitle left={tr.levels.title} right={tr.levels.priceDistance} />
-      <LevelCards
-        levels={snapshot.levels}
-        spot={snapshot.spot}
-        decimals={decimals}
-        onHover={onHighlight}
-      />
+          {/* Un Net GEX proche de zéro peut cacher deux blocs opposés : on montre
+              toujours la masse positive et la masse négative. */}
+          <div className="text-[11px] text-tx2">{tr.gex.split}</div>
+          <GexSplitBar
+            positive={snapshot.positiveGex}
+            negative={snapshot.negativeGex}
+            positiveShare={gexSplitShare(snapshot)}
+            className="mt-1.5"
+          />
+
+          <div className="text-[11px] text-tx2">{tr.metrics.expectedMove}</div>
+          <div className="num mt-0.5 text-[15px]">
+            {snapshot.expectedMove
+              ? `± ${fmt(snapshot.expectedMove.points, decimals)} (${fmt(snapshot.expectedMove.pct, 2)} %)`
+              : "—"}
+          </div>
+
+          <SectionTitle left={tr.levels.title} right={tr.levels.priceDistance} />
+          <LevelCards
+            levels={snapshot.levels}
+            spot={snapshot.spot}
+            decimals={decimals}
+            onHover={onHighlight}
+          />
+        </>
+      )}
 
       {snapshot.proxy && (
         <p className="mt-3 border-t border-line pt-3 text-[11px] text-tx2">
@@ -94,6 +121,11 @@ export function RegimePanel({
       <p className="mt-4 text-[11px] text-tx2">{tr.common.disclaimer}</p>
     </div>
   );
+}
+
+function gexSplitShare(snapshot: GexSnapshot): number | null {
+  const total = snapshot.positiveGex - snapshot.negativeGex;
+  return total > 0 ? snapshot.positiveGex / total : null;
 }
 
 function SectionTitle({ left, right }: { left: string; right: string }) {

@@ -20,6 +20,8 @@ export interface OptionContract {
   volume: number;
   /** Gamma par contrat lorsqu'il est fourni par la source (CBOE). */
   gamma?: number;
+  /** Delta par action/unité lorsqu'il est fourni (CBOE) ; sinon estimé BS. */
+  delta?: number;
   bid?: number;
   ask?: number;
   last?: number;

@@ -89,7 +89,7 @@ export async function GET() {
         rows: results,
       },
       {
-        source: first?.source ?? "CBOE (différé 15 min)",
+        source: first?.source ?? "CBOE",
         provider: "cboe",
         asOf: first?.asOf ?? Date.now(),
         fetchedAt: Date.now(),

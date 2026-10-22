@@ -58,15 +58,23 @@ describe("getGexSnapshot", () => {
   });
 });
 
-describe("proxies NQ et GC", () => {
-  it("dérive les niveaux de NDX et les arrondit au tick du contrat", async () => {
+describe("proxies ES, NQ et GC", () => {
+  it("mappe ES sur la chaîne SPX", async () => {
+    const snapshot = await getGexSnapshot("ES");
+    expect(snapshot.assetId).toBe("ES");
+    expect(snapshot.proxy?.underlyingId).toBe("SPX");
+    expect(snapshot.provenance.derived).toBe(true);
+    expect(snapshot.frontExpiries.length).toBeGreaterThan(0);
+    expect(snapshot.sessionLevels).toEqual([]); // fixtures : pas de séance RTH
+  });
+
+  it("dérive les niveaux de QQQ et les arrondit au tick du contrat", async () => {
     const snapshot = await getGexSnapshot("NQ");
     expect(snapshot.proxy).toBeDefined();
-    expect(snapshot.proxy!.underlyingId).toBe("NDX");
+    expect(snapshot.proxy!.underlyingId).toBe("QQQ");
     expect(snapshot.proxy!.tick).toBe(0.25);
     expect(snapshot.provenance.derived).toBe(true);
-    expect(snapshot.proxy!.ratio).toBeGreaterThan(0.5);
-    expect(snapshot.proxy!.ratio).toBeLessThan(1.5);
+    expect(snapshot.proxy!.ratio).toBeGreaterThan(10);
 
     // niveaux : multiples du tick de 0,25
     for (const level of snapshot.levels) {

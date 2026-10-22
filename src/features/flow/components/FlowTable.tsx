@@ -11,7 +11,7 @@ import { fmt, fmtAmount, fmtMoney } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { nyTimeShort } from "@/lib/time";
 import type { FlowTrade } from "@/server/providers/types";
-import { Tooltip } from "@/ui/Tooltip";
+import { AssetMark } from "@/ui/AssetMark";
 import { BLOCK_PREMIUM_THRESHOLD, type FlowFilterId } from "../config";
 
 const FILTERS: { id: FlowFilterId; label: () => string }[] = [
@@ -71,8 +71,7 @@ export function FlowTable({
         </div>
       )}
 
-      <div className="min-w-0 overflow-x-auto">
-        <div className="grid min-w-[680px] grid-cols-[62px_62px_40px_80px_56px_56px_84px_48px_62px] items-center gap-2 border-b border-line px-3 py-2 text-[11px] text-tx2">
+      <div className="min-w-0 overflow-x-auto">          <div className="sticky top-0 z-10 grid min-w-[660px] grid-cols-[62px_62px_40px_80px_56px_56px_84px_64px] items-center gap-2 border-b border-line bg-bg/90 px-3 py-2 font-mono text-[10px] tracking-[0.08em] text-tx2 uppercase backdrop-blur-sm">
           <span>{tr.flow.cols.time}</span>
           <span>{tr.flow.cols.symbol}</span>
           <span>{tr.flow.cols.type}</span>
@@ -81,7 +80,6 @@ export function FlowTable({
           <span className="text-right">{tr.flow.cols.size}</span>
           <span className="text-right">{tr.flow.cols.premium}</span>
           <span>{tr.flow.cols.side}</span>
-          <span>{tr.flow.cols.tag}</span>
         </div>
 
         <div>
@@ -92,13 +90,26 @@ export function FlowTable({
               <div
                 key={trade.id}
                 style={{ ["--i" as string]: Math.min(index, 12) }}
-                className={`grid min-w-[680px] grid-cols-[62px_62px_40px_80px_56px_56px_84px_48px_62px] items-center gap-2 border-b border-line px-3 py-2 text-xs ${
+                className={`grid min-w-[660px] grid-cols-[62px_62px_40px_80px_56px_56px_84px_64px] items-center gap-2 border-b border-line px-3 py-2 text-xs transition-colors duration-150 hover:bg-white/[0.035] ${
                   animateEntrance ? "row-in" : ""
                 } ${isBlock ? "shadow-[inset_2px_0_0_var(--ac)]" : ""}`}
               >
                 <span className="num text-tx2">{nyTimeShort(trade.ts)}</span>
-                <b>{trade.assetId}</b>
-                <span className={trade.type === "call" ? "text-call" : "text-put"}>
+                <span className="flex items-center gap-1.5">
+                  <AssetMark assetId={trade.assetId} size={14} />
+                  <b>{trade.assetId}</b>
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1.5 ${
+                    trade.type === "call" ? "text-call" : "text-put"
+                  }`}
+                >
+                  <i
+                    aria-hidden="true"
+                    className={`size-1.5 rounded-full ${
+                      trade.type === "call" ? "bg-call" : "bg-put"
+                    }`}
+                  />
                   {trade.type === "call" ? tr.flow.calls : tr.flow.puts}
                 </span>
                 <span className="num">{fmt(trade.strike, 0)}</span>
@@ -107,24 +118,23 @@ export function FlowTable({
                 </span>
                 <span className="num text-right">{fmtAmount(trade.amount)}</span>
                 <span
-                  className={`num text-right ${isBlock ? "font-semibold text-ac" : ""}`}
+                  className={`num text-right ${isBlock ? "font-semibold text-ac" : "text-tx"}`}
                 >
                   {fmtMoney(trade.premiumUsd)}
                 </span>
-                <span className="text-tx2">
+                <span className="flex items-center gap-1 text-tx2">
                   {trade.side === "buy"
                     ? tr.flow.ask
                     : trade.side === "sell"
                       ? tr.flow.bid
                       : "—"}
-                </span>
-                <span>
-                  {isBlock ? (
-                    <Tooltip label="Trade de bloc (block_trade_id Deribit) ou prime > 1 M$">
-                      <span className="accent text-ac">{tr.flow.block}</span>
-                    </Tooltip>
-                  ) : (
-                    <span className="text-tx2">—</span>
+                  {isBlock && (
+                    <span
+                      title="Trade de bloc (block_trade_id Deribit) ou prime > 1 M$"
+                      className="accent rounded border border-ac/40 px-1 text-[9px] font-semibold text-ac"
+                    >
+                      {tr.flow.block}
+                    </span>
                   )}
                 </span>
               </div>

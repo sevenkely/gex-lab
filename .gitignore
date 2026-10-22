@@ -46,6 +46,12 @@ next-env.d.ts
 
 # artefacts d'outillage Freebuff
 /.freebuff
+/freebuff-sites-build
+
+# captures d'écran et fichiers jetables (artefacts de travail locaux)
+/docs/*.png
+/nul
+/tmp_tree.txt
 
 # playwright
 /playwright-report

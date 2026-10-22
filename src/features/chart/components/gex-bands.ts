@@ -32,16 +32,20 @@ import type {
 } from "lightweight-charts";
 import { fmtPct } from "@/lib/format";
 
-export type BandKind = "callWall" | "putWall" | "zeroGamma" | "maxGamma";
+export type BandKind = "callWall" | "putWall" | "zeroGamma" | "maxGamma" | "maxPain";
 
 export interface BandLevel {
   kind: BandKind;
+  /** Rang dans le genre : 1 = niveau principal, 2 = second mur (CW2/PW2). */
+  rank: number;
   price: number;
   label: string;
   /** Triplet RGB "45,212,191" (les tokens CSS sont en rgba()). */
   rgb: string;
   /** Niveau structurant : bande pleine + étiquette. */
   main: boolean;
+  /** Pastille de prix sur l'axe (les seconds murs en ont une, sans bande pleine). */
+  tag: boolean;
 }
 
 export interface GexBandsOptions {
@@ -52,6 +56,18 @@ export interface GexBandsOptions {
   /** Prix courant (dernier tick) pour la pulsation et les ondes. */
   spot: number;
   decimals: number;
+  /** Texte du niveau écrit sur la zone (« PUT WALL », « ZERO GAMMA »…). */
+  labels: boolean;
+  /** Pastilles de prix sur l'axe : masquées quand le ladder les affiche. */
+  axisTags: boolean;
+  /**
+   * Pastilles dessinées dans le panneau (niveau épinglé hors champ, survol).
+   * Désactivées quand `LevelTags` les rend en DOM : deux pastilles au même
+   * bord droit se superposaient sans pouvoir s'empiler.
+   */
+  inlineTags: boolean;
+  /** Profil de volume de la séance précédente (barres horizontales à droite). */
+  profile: readonly { price: number; volume: number }[];
 }
 
 interface Ripple {
@@ -71,6 +87,46 @@ export const EDGE_INSET = 16;
 export const TOP_INSET = 52;
 /** Place réservée à l'étiquette d'un niveau épinglé (hauteur + espacement). */
 const TAG_ROOM = 22;
+
+/**
+ * Rendu des niveaux, calqué sur la référence (TradingView) : une ligne franche
+ * au prix exact, doublée d'une bande translucide pleine largeur. L'épaisseur
+ * de la bande et le style de trait distinguent les familles de niveaux — les
+ * murs sont pleins et épais, le flip est tireté, le max pain pointillé.
+ */
+const BAND_HEIGHT: Record<BandKind, number> = {
+  callWall: 13,
+  putWall: 13,
+  zeroGamma: 17,
+  maxPain: 9,
+  maxGamma: 8,
+};
+
+const LINE_WIDTH: Record<BandKind, number> = {
+  callWall: 2,
+  putWall: 2,
+  zeroGamma: 2,
+  maxPain: 1,
+  maxGamma: 1,
+};
+
+/** Motif de tirets (en px) : vide = trait plein. */
+const LINE_DASH: Record<BandKind, number[]> = {
+  callWall: [],
+  putWall: [],
+  zeroGamma: [7, 4],
+  maxPain: [2, 3],
+  maxGamma: [18, 12],
+};
+
+/** Opacité de la bande au repos (le survol et le flash la renforcent). */
+const BAND_ALPHA: Record<BandKind, number> = {
+  callWall: 0.15,
+  putWall: 0.15,
+  zeroGamma: 0.14,
+  maxPain: 0.07,
+  maxGamma: 0.06,
+};
 
 /**
  * Extension maximale de la plage verticale due aux niveaux, exprimée en
@@ -112,6 +168,25 @@ export function clampLevelsToWindow(
 }
 
 /**
+ * Index des bougies visibles, bornés à la série réellement chargée.
+ *
+ * Après un changement d'unité de temps, `setData` remplace la série alors que
+ * l'échelle de temps conserve la plage logique de l'ancienne : elle peut donc
+ * désigner des index au-delà de la nouvelle longueur (1m → 1D, 720 → 365
+ * bougies). `null` quand la série est vide.
+ */
+export function visibleBarWindow(
+  length: number,
+  visible: { from: number; to: number } | null,
+): { from: number; to: number } | null {
+  const last = length - 1;
+  if (last < 0) return null;
+  const from = visible ? Math.min(last, Math.max(0, Math.ceil(visible.from))) : 0;
+  const to = visible ? Math.min(last, Math.max(0, Math.floor(visible.to))) : last;
+  return { from: Math.min(from, to), to: Math.max(from, to) };
+}
+
+/**
  * Ordonnée d'un niveau épinglé : on empile depuis le bord haut (`edge > 0`,
  * le niveau est au-dessus du champ) ou bas, en réservant la place de l'étiquette.
  */
@@ -139,6 +214,8 @@ function headerLabel(kind: BandKind): string {
       return "Put Wall";
     case "zeroGamma":
       return "Zero Gamma";
+    case "maxPain":
+      return "Max Pain";
     default:
       return "Max Gamma";
   }
@@ -153,6 +230,10 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
     highlight: null,
     spot: 0,
     decimals: 2,
+    labels: true,
+    axisTags: true,
+    inlineTags: true,
+    profile: [],
   };
   private startedAt = 0;
   private ripples: Ripple[] = [];
@@ -192,16 +273,6 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
     this.requestUpdate();
   }
 
-  /** Déclenche l'animation de toucher sans simuler un prix (bouton de démo). */
-  pulse(kind: BandKind): void {
-    const level = this.levels.find((item) => item.kind === kind);
-    if (!level || this.options.reducedMotion) return;
-    const now = performance.now();
-    this.lastTouch.set(kind, now);
-    this.ripples.push({ kind, price: level.price, startedAt: now });
-    this.requestUpdate();
-  }
-
   /**
    * Déclenche onde + flash si le prix touche un niveau.
    *
@@ -218,7 +289,8 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
     for (const level of this.levels) {
       if (!level.main) continue;
       const touched = Math.abs(price - level.price) / price <= TOUCH_TOLERANCE;
-      const crossed = previous > 0 && (previous - level.price) * (price - level.price) < 0;
+      const crossed =
+        previous > 0 && (previous - level.price) * (price - level.price) < 0;
       if (!touched && !crossed) continue;
       const last = this.lastTouch.get(level.kind) ?? 0;
       if (now - last < TOUCH_COOLDOWN_MS) continue;
@@ -249,8 +321,8 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   priceAxisViews(): readonly ISeriesPrimitiveAxisView[] {
-    const { visible } = this.options;
-    if (!visible || !this.host) return [];
+    const { visible, axisTags } = this.options;
+    if (!visible || !axisTags || !this.host) return [];
     const series = this.host.series;
     const views: ISeriesPrimitiveAxisView[] = [];
     // Anti-collision manuelle : deux niveaux distants de moins de 18 px
@@ -261,7 +333,7 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
     // porte déjà l'information (prix, direction, distance).
     const range = series.priceScale().getVisibleRange();
     for (const level of this.levels) {
-      if (!level.main) continue;
+      if (!level.tag) continue;
       if (range && (level.price < range.from || level.price > range.to)) continue;
       const coordinate = series.priceToCoordinate(level.price);
       if (coordinate === null) continue;
@@ -270,10 +342,11 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
       accepted.push(y);
       views.push({
         coordinate: () => coordinate as number,
-        text: () => level.price.toLocaleString("en-US", {
-          minimumFractionDigits: this.options.decimals,
-          maximumFractionDigits: this.options.decimals,
-        }),
+        text: () =>
+          level.price.toLocaleString("en-US", {
+            minimumFractionDigits: this.options.decimals,
+            maximumFractionDigits: this.options.decimals,
+          }),
         textColor: () => "#11161f",
         backColor: () => `rgb(${level.rgb})`,
         visible: () => true,
@@ -303,16 +376,19 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
     const host = this.host;
     if (!host) return null;
     const data = host.series.data();
-    if (data.length === 0) return null;
-    const visible = host.chart.timeScale().getVisibleLogicalRange();
-    const from = visible ? Math.max(0, Math.ceil(visible.from)) : 0;
-    const to = visible
-      ? Math.min(data.length - 1, Math.floor(visible.to))
-      : data.length - 1;
+    // Plage bornée : sans ce garde-fou, `data[index]` est `undefined` quand
+    // l'unité de temps change et le calcul d'échelle lève une TypeError.
+    const window = visibleBarWindow(
+      data.length,
+      host.chart.timeScale().getVisibleLogicalRange(),
+    );
+    if (!window) return null;
     let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
-    for (let index = Math.min(from, to); index <= Math.max(from, to); index += 1) {
-      const { low, high } = data[index] as { low?: number; high?: number };
+    for (let index = window.from; index <= window.to; index += 1) {
+      const row = data[index] as { low?: number; high?: number } | undefined;
+      if (!row) continue;
+      const { low, high } = row;
       if (typeof low === "number" && low < min) min = low;
       if (typeof high === "number" && high > max) max = high;
     }
@@ -326,7 +402,10 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
    * au-delà du bas). On la conserve, en notant de quel bord le prix est sorti :
    * la bande sera épinglée au lieu d'être dessinée hors du panneau.
    */
-  private coordinateFor(price: number, height: number): { y: number; edge: -1 | 0 | 1 } | null {
+  private coordinateFor(
+    price: number,
+    height: number,
+  ): { y: number; edge: -1 | 0 | 1 } | null {
     const coordinate = this.host?.series.priceToCoordinate(price) as number | null;
     if (coordinate === null) return null; // échelle de prix pas encore prête
     if (coordinate < 0) return { y: coordinate, edge: 1 };
@@ -356,11 +435,35 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
       }
     }
 
-    const activeRipples = this.ripples.filter((ripple) => now - ripple.startedAt < RIPPLE_MS);
+    const activeRipples = this.ripples.filter(
+      (ripple) => now - ripple.startedAt < RIPPLE_MS,
+    );
     if (activeRipples.length !== this.ripples.length) this.ripples = activeRipples;
+
+    // Profil de volume de la séance précédente : de fines barres blanches
+    // contre l'axe des prix, comme la « market map » de la référence.
+    if (this.options.profile.length > 0) {
+      let peak = 0;
+      for (const bucket of this.options.profile) peak = Math.max(peak, bucket.volume);
+      if (peak > 0) {
+        ctx.save();
+        ctx.fillStyle = "rgba(230,236,245,.2)";
+        for (const bucket of this.options.profile) {
+          const coordinate = this.host?.series.priceToCoordinate(bucket.price) as
+            number | null | undefined;
+          if (coordinate === null || coordinate === undefined) continue;
+          if (coordinate < 0 || coordinate > height) continue;
+          const barWidth = 3 + (bucket.volume / peak) * 74;
+          ctx.fillRect(width - barWidth - 10, coordinate - 1, barWidth, 2);
+        }
+        ctx.restore();
+      }
+    }
 
     // Curseurs d'empilement : deux niveaux épinglés du même côté ne se couvrent pas.
     const stacks = { up: 0, down: 0 };
+    // Ordonnées déjà occupées par un libellé de zone (anti-collision).
+    const labelRows: number[] = [];
 
     // Le max gamma (segments) est dessiné en premier : il ne doit pas masquer
     // la bande pleine d'un mur situé au même strike.
@@ -370,35 +473,39 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
       if (!point) continue;
       const appear = reduced
         ? 1
-        : Math.max(0, Math.min(1, (now - this.startedAt - this.indexDelay(level.kind)) / APPEAR_MS));
+        : Math.max(
+            0,
+            Math.min(1, (now - this.startedAt - this.indexDelay(level.kind)) / APPEAR_MS),
+          );
       if (appear <= 0.01) continue;
 
-      const highlighted = this.options.highlight === null || this.options.highlight === level.kind;
+      const highlighted =
+        this.options.highlight === null || this.options.highlight === level.kind;
       const dim = highlighted ? 1 : 0.28;
       const flash = this.flashFor(level, now);
       const pulse =
-        !reduced && nearest === level.kind ? 0.5 + 0.5 * Math.sin(t * 2.1 + level.price) : 0;
-      const phase = level.price * 0.37;
-
-      const halfHeight =
-        (level.main ? 15 : 7) * (0.85 + 0.15 * appear) + (level.kind === "zeroGamma" ? 4 : 0);
+        !reduced && nearest === level.kind
+          ? 0.5 + 0.5 * Math.sin(t * 2.1 + level.price)
+          : 0;
+      const halfHeight = (BAND_HEIGHT[level.kind] * (0.85 + 0.15 * appear)) / 2;
       const edge = point.edge;
       const pinned = edge !== 0;
       // Un niveau secondaire (max gamma) hors champ n'est pas dessiné : ses
       // segments n'ont pas d'étiquette et brouilleraient la lecture des murs.
       if (pinned && !level.main) continue;
       const yBase = pinned
-        ? pinY(edge > 0 ? 1 : -1, halfHeight, edge > 0 ? stacks.up++ : stacks.down++, height)
+        ? pinY(
+            edge > 0 ? 1 : -1,
+            halfHeight,
+            edge > 0 ? stacks.up++ : stacks.down++,
+            height,
+          )
         : point.y;
-      const wave = (x: number) => {
-        if (reduced) return 0;
-        return (
-          Math.sin(x * 0.024 + t * 0.9 + phase) * 1.5 +
-          Math.sin(x * 0.009 - t * 0.6 + phase * 1.7) * 1.1
-        );
-      };
+      // Trait aligné sur la grille de pixels : une ligne d'1 px reste nette.
+      const yLine =
+        LINE_WIDTH[level.kind] % 2 === 1 ? Math.round(yBase) + 0.5 : Math.round(yBase);
 
-      const alpha = (level.main ? 1 : 0.6) * dim * appear * (1 + 0.25 * pulse) * (1 + 0.9 * flash);
+      const alpha = (level.main ? 1 : 0.6) * dim * appear * (1 + 0.9 * flash);
 
       ctx.save();
       ctx.globalAlpha = Math.min(1, alpha);
@@ -408,61 +515,81 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
       }
 
       if (level.main) {
-        // corps de la bande
+        // Bande pleine largeur, sans dégradé : elle court jusqu'à l'axe comme
+        // un niveau de prix du terminal.
+        ctx.fillStyle = rgba(
+          level.rgb,
+          BAND_ALPHA[level.kind] + 0.04 * pulse + 0.18 * flash,
+        );
+        ctx.fillRect(0, yBase - halfHeight, width, halfHeight * 2);
+
+        // Trait du prix exact : plein pour les murs, tireté pour le flip.
+        ctx.setLineDash(LINE_DASH[level.kind]);
+        ctx.lineWidth = LINE_WIDTH[level.kind];
+        ctx.strokeStyle = rgba(level.rgb, 0.92);
         ctx.beginPath();
-        for (let x = 0; x <= width; x += 4) ctx.lineTo(x, yBase + wave(x) - halfHeight);
-        for (let x = width; x >= 0; x -= 4) ctx.lineTo(x, yBase + wave(x) + halfHeight);
-        ctx.closePath();
-
-        const gradient = ctx.createLinearGradient(0, 0, width, 0);
-        gradient.addColorStop(0, rgba(level.rgb, 0));
-        gradient.addColorStop(0.12, rgba(level.rgb, 0.26));
-        gradient.addColorStop(0.88, rgba(level.rgb, 0.26));
-        gradient.addColorStop(1, rgba(level.rgb, 0));
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // bords
-        ctx.strokeStyle = rgba(level.rgb, 0.8);
-        ctx.lineWidth = 1;
-        for (const sign of [-1, 1]) {
-          ctx.beginPath();
-          for (let x = 0; x <= width; x += 4) ctx.lineTo(x, yBase + wave(x) + sign * halfHeight);
-          ctx.stroke();
-        }
-
-        // ligne médiane pointillée
-        ctx.setLineDash([2, 5]);
-        ctx.strokeStyle = rgba(level.rgb, 0.35);
-        ctx.beginPath();
-        ctx.moveTo(0, yBase);
-        ctx.lineTo(width, yBase);
+        ctx.moveTo(0, yLine);
+        ctx.lineTo(width, yLine);
         ctx.stroke();
         ctx.setLineDash([]);
+      } else if (level.kind !== "maxGamma") {
+        // Second mur (CW2/PW2) : trait fin et bande discrète — il situe un
+        // repère sans concurrencer le mur principal du même côté.
+        ctx.fillStyle = rgba(level.rgb, 0.06 + 0.04 * flash);
+        ctx.fillRect(0, yBase - halfHeight / 2, width, halfHeight);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = rgba(level.rgb, 0.55);
+        ctx.beginPath();
+        ctx.moveTo(0, Math.round(yBase) + 0.5);
+        ctx.lineTo(width, Math.round(yBase) + 0.5);
+        ctx.stroke();
       } else {
+        // Max gamma : segments discrets, sans bordure, pour ne pas masquer la
+        // bande pleine d'un mur situé au même strike.
         const segment = [40, 12, 16, 12, 70, 16, 10, 12];
         let x = 0;
         let index = 0;
-        ctx.fillStyle = rgba(level.rgb, 0.16);
-        ctx.strokeStyle = rgba(level.rgb, 0.5);
+        ctx.fillStyle = rgba(level.rgb, 0.1);
         while (x < width) {
           const length = segment[index % segment.length];
           if (index % 2 === 0) {
-            const xx = (x + (index * 37) % 60) % width;
-            ctx.fillRect(xx, yBase - halfHeight / 2, length, halfHeight);
-            ctx.strokeRect(xx + 0.5, yBase - halfHeight / 2 + 0.5, length, halfHeight);
+            const xx = (x + ((index * 37) % 60)) % width;
+            ctx.fillRect(xx, yBase - halfHeight, length, halfHeight * 2);
           }
           x += length;
           index += 1;
         }
+        ctx.fillStyle = rgba(level.rgb, 0.45);
+        ctx.fillRect(0, yBase, width, 1);
       }
       ctx.restore();
+
+      // Texte du niveau écrit sur la zone (au-dessus du bord supérieur).
+      // Au survol, l'étiquette habituelle prend le relais avec le prix : on
+      // n'écrit pas deux fois le même nom.
+      if (
+        this.options.labels &&
+        level.main &&
+        !pinned &&
+        this.options.highlight !== level.kind &&
+        appear > 0.6
+      ) {
+        const above = yBase - halfHeight - 9;
+        const y = above < TOP_INSET ? yBase + halfHeight + 13 : above;
+        if (y > TOP_INSET && labelRows.every((row) => Math.abs(row - y) > 13)) {
+          labelRows.push(y);
+          drawZoneLabel(ctx, level.rgb, headerLabel(level.kind), y, appear * dim);
+        }
+      }
 
       const priceText = level.price.toLocaleString("en-US", {
         minimumFractionDigits: this.options.decimals,
         maximumFractionDigits: this.options.decimals,
       });
-      if (pinned) {
+      if (!this.options.inlineTags) {
+        // Le DOM (`LevelTags`) porte la pastille, y compris hors champ : rien
+        // à dessiner ici, sinon le même nom s'écrit deux fois au même bord.
+      } else if (pinned) {
         // Hors champ : l'étiquette reste visible en permanence, avec la
         // direction (↑ au-dessus du champ, ↓ en dessous) et la distance.
         const arrow = point.edge > 0 ? "↑" : "↓";
@@ -470,9 +597,23 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
           this.options.spot > 0
             ? ` ${fmtPct((level.price / this.options.spot - 1) * 100, 2)}`
             : "";
-        drawTag(ctx, level.rgb, `${arrow} ${headerLabel(level.kind)} ${priceText}${distance}`, yBase, width, appear);
+        drawTag(
+          ctx,
+          level.rgb,
+          `${arrow} ${headerLabel(level.kind)} ${priceText}${distance}`,
+          yBase,
+          width,
+          appear,
+        );
       } else if (this.options.highlight === level.kind) {
-        drawTag(ctx, level.rgb, `${headerLabel(level.kind)} ${priceText}`, yBase - halfHeight - 12, width, appear);
+        drawTag(
+          ctx,
+          level.rgb,
+          `${headerLabel(level.kind)} ${priceText}`,
+          yBase - halfHeight - 12,
+          width,
+          appear,
+        );
       }
     }
 
@@ -511,7 +652,7 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
   }
 
   private indexDelay(kind: BandKind): number {
-    const order: BandKind[] = ["callWall", "putWall", "zeroGamma", "maxGamma"];
+    const order: BandKind[] = ["callWall", "putWall", "zeroGamma", "maxGamma", "maxPain"];
     return order.indexOf(kind) * 90;
   }
 
@@ -556,6 +697,34 @@ export class GexBandsPrimitive implements ISeriesPrimitive<Time> {
     else this.ensureLoop();
     this.requestUpdate();
   }
+}
+
+/** Nom du niveau écrit sur sa zone, en petites capitales espacées. */
+function drawZoneLabel(
+  ctx: CanvasRenderingContext2D,
+  rgb: string,
+  text: string,
+  y: number,
+  alpha: number,
+): void {
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.font = "600 9px ui-monospace, Menlo, Consolas, monospace";
+  // `letterSpacing` n'existe pas partout ; le rendu reste correct sans.
+  if ("letterSpacing" in ctx) {
+    (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing =
+      "0.12em";
+  }
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(8,13,24,.95)";
+  ctx.shadowBlur = 3;
+  ctx.fillStyle = rgba(rgb, 0.92);
+  ctx.fillText(text.toUpperCase(), 10, y);
+  if ("letterSpacing" in ctx) {
+    (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = "0";
+  }
+  ctx.restore();
 }
 
 /** Étiquette de niveau, alignée à droite dans le panneau. */

@@ -29,9 +29,9 @@ export function Spark({
     })
     .join(" ");
 
-  // Le tracé reprend la convention des bougies : accent pour la hausse,
-  // ardoise pour la baisse — jamais le duo vert/rouge classique.
-  const stroke = up ? "var(--ac)" : "var(--candle-down)";
+  // Le tracé reprend la convention des bougies : vert pour la hausse, rouge
+  // pour la baisse — le sens du prix, pas l'accent du régime de la page.
+  const stroke = up ? "var(--candle-up)" : "var(--candle-down)";
 
   return (
     <svg

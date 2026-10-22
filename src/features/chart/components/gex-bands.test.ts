@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EDGE_INSET, MAX_EXTENSION, TOP_INSET, clampLevelsToWindow, pinY } from "./gex-bands";
+import {
+  EDGE_INSET,
+  MAX_EXTENSION,
+  TOP_INSET,
+  clampLevelsToWindow,
+  pinY,
+  visibleBarWindow,
+} from "./gex-bands";
 
 describe("clampLevelsToWindow", () => {
   it("n'étend pas la plage au-delà du plafond autorisé", () => {
@@ -40,7 +47,36 @@ describe("clampLevelsToWindow", () => {
   });
 
   it("sans bougies, garde le comportement d'origine (tous les niveaux)", () => {
-    expect(clampLevelsToWindow(null, [90_000, 80_000])).toEqual({ min: 80_000, max: 90_000 });
+    expect(clampLevelsToWindow(null, [90_000, 80_000])).toEqual({
+      min: 80_000,
+      max: 90_000,
+    });
+  });
+});
+
+describe("visibleBarWindow", () => {
+  it("borne la plage visible à la série après un changement d'unité de temps", () => {
+    // 1m (720 bougies) → 1D (365) : l'échelle garde les index de l'ancienne vue.
+    expect(visibleBarWindow(365, { from: 420, to: 719 })).toEqual({ from: 364, to: 364 });
+  });
+
+  it("garde la plage visible quand elle est dans la série", () => {
+    expect(visibleBarWindow(720, { from: 120.4, to: 640.8 })).toEqual({
+      from: 121,
+      to: 640,
+    });
+  });
+
+  it("ramène une vue décalée avant la série dans la série", () => {
+    expect(visibleBarWindow(10, { from: -40, to: -5 })).toEqual({ from: 0, to: 0 });
+  });
+
+  it("sans plage visible, prend toute la série", () => {
+    expect(visibleBarWindow(365, null)).toEqual({ from: 0, to: 364 });
+  });
+
+  it("renvoie null sans bougie", () => {
+    expect(visibleBarWindow(0, { from: 0, to: 10 })).toBeNull();
   });
 });
 
