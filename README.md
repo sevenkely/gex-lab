@@ -1,9 +1,13 @@
 # GEX Lab — terminal de niveaux gamma
 
 Terminal de marché orienté **niveaux d'exposition gamma** : bandes GEX sur le
-graphique, échelle de strikes (zero gamma, call/put walls, pOC/pVAH/pVAL, pLO),
-flux d'options crypto, dark pool et lecture de régime. Next.js 16 (App Router),
-React 19, Tailwind v4, `lightweight-charts`.
+graphique, échelle de strikes chiffrée (net DEX / net GEX / net OI, zero gamma,
+call/put walls, max pain), flux d'options crypto, dark pool et lecture de
+régime. Next.js 16 (App Router), React 19, Tailwind v4, `lightweight-charts`.
+
+Les niveaux de séance (pVAH / pPOC / pVAL / pLO / pHI) restent calculés côté
+données mais ne sont plus tracés : cinq lignes de plus sur le graphique pour
+une information que le profil de gamma porte déjà.
 
 ## Pages
 
@@ -66,14 +70,18 @@ Déploiement depuis le tableau de bord :
 ### Cache partagé (recommandé en production)
 
 Le serveur met en cache les réponses des providers avec trois niveaux
-(`src/server/cache.ts`) : mémoire du process, puis un driver Upstash Redis REST
-si `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` sont définies.
+(`src/server/cache.ts`) : mémoire du process, cache partagé Upstash Redis REST
+(dès que `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` sont définies),
+puis repli « dernière valeur connue » quand une source échoue.
 
 En serverless, chaque instance froide repart avec une mémoire vide : la première
-requête d'une instance recharge la chaîne d'options complète depuis CBOE
-(plusieurs Mo, plusieurs secondes). Brancher Upstash Redis rend ce cache partagé
-entre invocations et supprime ces pics de latence. Les deux variables sont donc
-optionnelles mais recommandées dès qu'il y a du trafic.
+requête recharge la chaîne d'options complète depuis CBOE (plusieurs Mo,
+plusieurs secondes). Avec les deux variables, la réponse est écrite compressée
+(gzip) et relue au démarrage d'une instance : les pics de latence disparaissent.
+Ces variables restent optionnelles — sans elles, le cache se limite au process.
+
+Détail des choix (lecture partagée, enveloppe de fraîcheur, compression) :
+[`docs/IMPLEMENTATION-NOTES.md`](docs/IMPLEMENTATION-NOTES.md#8-cache-partagé--une-enveloppe-compressée-dans-redis).
 
 `FINRA_CLIENT_ID` / `FINRA_CLIENT_SECRET` restent facultatifs (le dataset
 `weeklySummary` répond aujourd'hui sans authentification).

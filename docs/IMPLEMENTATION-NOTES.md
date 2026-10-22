@@ -212,3 +212,70 @@ recouvraient auparavant.
 - **Les fichiers `.next/dev` sur ce poste sont lus lentement** (disque réseau /
   antivirus) : Turbopack le signale, cela ralentit les compilations de dev sans
   affecter la production.
+
+---
+
+## 8. Cache partagé : une enveloppe compressée dans Redis
+
+Le cache mémoire suffit à une instance unique, pas en serverless : chaque
+instance froide repart vide et recharge la chaîne d'options (≈ 2 Mo une fois
+normalisée, 13 Mo bruts pour SPX). Quatre décisions en découlent.
+
+**Lecture partagée, pas seulement écriture.** `cached()` interroge le cache
+partagé dès que la mémoire du process est vide, *avant* d'appeler le provider.
+Un driver qui ne servirait qu'au repli en erreur ne supprimerait aucun cold
+start.
+
+**Enveloppe `{ t, ttl, v }`.** La fraîcheur est décidée côté application, et le
+TTL Redis est plus long (30× le TTL applicatif, borné entre 15 min et 24 h).
+Une instance froide peut donc encore servir la dernière valeur connue quand la
+source est en panne — c'est ce qui alimente « Données en retard ».
+
+**gzip + base64 (`gz:`).** Une chaîne SPX (21 000 contrats) dépasse 2 Mo de
+JSON, au-delà de la limite d'une requête REST Upstash. Compressée, elle tombe
+sous 900 Ko — vérifié par un test de forme réaliste dans `cache.test.ts`. Les
+petites valeurs restent en clair (l'en-tête gzip coûterait plus que le gain).
+
+**Écriture attendue.** En serverless, une promesse flottante peut être
+abandonnée dès la réponse envoyée : l'écriture est attendue, mais bornée (4 s)
+et son échec ignoré — un cache indisponible ne casse jamais un rendu.
+
+Les chargements concurrents d'une même clé sont fusionnés (single-flight) : une
+page qui demande ES côté serveur et l'API GEX en parallèle ne déclenche qu'une
+seule récupération CBOE.
+
+---
+
+## 9. Ladder : des chiffres, pas seulement des barres
+
+**Constat :** trois colonnes de barres se lisaient comme une texture — on voyait
+où le gamma s'accumulait, pas combien. Sur un strike donné, impossible de dire
+si le net GEX valait 120 M ou 400 M sans passer la souris.
+
+**Décision :**
+
+- chaque cellule porte sa valeur, dans une colonne de 46 px réservée à droite :
+  la barre ne passe jamais dessous, et les chiffres s'alignent d'une rangée à
+  l'autre (colonnes tabulaires) ;
+- les barres glissent d'une mise à jour à l'autre (transition sur `width` /
+  `left`, 420 ms) au lieu de sauter d'un coup ;
+- la rangée du spot reçoit un rail accentué, un point et un prix en gras ; les
+  niveaux gardent leur pastille et un filet coloré ;
+- le pied du tableau additionne la fenêtre affichée (Σ DEX, Σ GEX, Σ OI) et
+  rappelle le nombre de strikes : la forme vient des barres, l'ordre de grandeur
+  vient du total.
+
+**Effet :** la colonne se lit comme un carnet — prix, valeur, magnitude — sans
+survol, y compris sur une capture d'écran.
+
+## 10. Les pastilles de niveau avaient besoin d'une largeur intrinsèque
+
+**Constat :** `LevelTags` vit dans un hôte de 0 px de large (`w-0`), positionné
+par `right` uniquement. La pastille, elle, prenait la largeur restante : elle se
+faisait écraser et son prix était coupé dès que le libellé s'allongeait
+(« CALL WALL 7,800.75 »).
+
+**Décision :** `w-max` sur la pastille — elle se dimensionne sur son contenu et
+déborde vers la gauche, ce qui est exactement le comportement voulu contre
+l'axe. Au premier rendu, la largeur de l'axe vaut parfois 0 avant la mise en
+page : une reprise unique à 150 ms replace la pastille une fois l'axe mesuré.

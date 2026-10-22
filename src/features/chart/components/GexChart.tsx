@@ -33,7 +33,7 @@ import {
 } from "lightweight-charts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LEVEL_RGB } from "@/features/gex/components/level-style";
-import type { GexLevelKind, GexSnapshot, SessionLevelKind } from "@/features/gex/types";
+import type { GexLevelKind, GexSnapshot } from "@/features/gex/types";
 import { INTERVAL_MS, MAX_BARS, WINDOW_HOURS } from "@/lib/candles";
 import { fmt, fmtGex, fmtGexCompact } from "@/lib/format";
 import { t } from "@/lib/i18n";
@@ -63,7 +63,7 @@ import {
 import { DrawingLayer } from "./DrawingLayer";
 import { GexBandsPrimitive, type BandKind, type BandLevel } from "./gex-bands";
 import { LevelTags, type LevelTag } from "./LevelTags";
-import { StrikeLadder, ladderRows, sessionRgb, strikeDecimals } from "./StrikeLadder";
+import { StrikeLadder, ladderRows, strikeDecimals } from "./StrikeLadder";
 
 const UP = "#0ECB81";
 const DOWN = "#F6465D";
@@ -85,14 +85,6 @@ const BAND_LABEL: Record<BandKind, string> = {
   zeroGamma: "Zero Gamma",
   maxGamma: "Max Gamma",
   maxPain: "Max Pain",
-};
-
-const SESSION_LINE: Record<SessionLevelKind, { color: string; style: LineStyle }> = {
-  pVAH: { color: "rgba(174,188,208,.55)", style: LineStyle.Dashed },
-  pPOC: { color: "rgba(180,160,229,.8)", style: LineStyle.Dotted },
-  pVAL: { color: "rgba(174,188,208,.55)", style: LineStyle.Dashed },
-  pLO: { color: "rgba(230,236,245,.65)", style: LineStyle.Solid },
-  pHI: { color: "rgba(230,236,245,.65)", style: LineStyle.Solid },
 };
 
 function toCandles(rows: readonly Candle[]): CandlestickData<Time>[] {
@@ -244,7 +236,12 @@ export function GexChart({
 
   /**
    * Pastilles de noms, contre l'axe — le seul endroit où un niveau se nomme :
-   * murs (rangs 1 et 2), flip, max gamma, max pain et niveaux de séance.
+   * murs (rangs 1 et 2), flip, max gamma, max pain.
+   *
+   * Les niveaux de séance (pVAH / pPOC / pVAL / pLO / pHI) ne sont plus dessinés :
+   * cinq lignes de plus sur le graphique et autant de pastilles y ajoutaient du
+   * bruit sans changer la lecture du gamma. Le calcul reste disponible côté
+   * données (`snapshot.sessionLevels`).
    */
   const overlayLevels = useMemo<LevelTag[]>(() => {
     const out: LevelTag[] = [];
@@ -266,16 +263,8 @@ export function GexChart({
         rgb: level.rgb,
       });
     }
-    for (const level of snapshot.sessionLevels) {
-      push({
-        id: level.kind,
-        label: level.kind,
-        price: level.price,
-        rgb: sessionRgb(level.kind),
-      });
-    }
     return out;
-  }, [bandLevels, decimals, snapshot.sessionLevels]);
+  }, [bandLevels, decimals]);
 
   const ladder = useMemo(
     () => ladderRows(snapshot.byStrike, snapshot.spot),
@@ -1014,21 +1003,6 @@ export function GexChart({
     overlayLinesRef.current = [];
     if (!levelsVisible) return;
 
-    for (const level of snapshot.sessionLevels) {
-      const style = SESSION_LINE[level.kind];
-      overlayLinesRef.current.push(
-        series.createPriceLine({
-          price: level.price,
-          color: style.color,
-          lineWidth: 1,
-          lineStyle: style.style,
-          // Prix et nom sont dans la pastille : la ligne de séance n'ajoute pas
-          // de case sur l'axe (sinon le prix s'écrirait deux fois).
-          axisLabelVisible: false,
-        }),
-      );
-    }
-
     const move = snapshot.expectedMove;
     if (move && move.points > 0) {
       const steps: readonly [number, number][] = [
@@ -1055,7 +1029,7 @@ export function GexChart({
       for (const line of overlayLinesRef.current) series.removePriceLine(line);
       overlayLinesRef.current = [];
     };
-  }, [levelsVisible, snapshot.expectedMove, snapshot.sessionLevels, snapshot.spot, wide]);
+  }, [levelsVisible, snapshot.expectedMove, snapshot.spot, wide]);
 
   /* --------------------------------------------------------- temps réel WS */
 

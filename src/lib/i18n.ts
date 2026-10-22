@@ -185,6 +185,7 @@ const fr = {
       gex: "Net GEX",
       oi: "Net OI",
       strikes: "strikes",
+      total: "Σ fenêtre",
       empty: "Aucun strike dans la fenêtre.",
     },
     session: {
@@ -433,6 +434,7 @@ const en: Dictionary = {
       gex: "Net GEX",
       oi: "Net OI",
       strikes: "strikes",
+      total: "Σ window",
       empty: "No strike in the window.",
     },
     session: {

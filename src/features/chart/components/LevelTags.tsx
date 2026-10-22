@@ -119,6 +119,7 @@ export function LevelTags({
     let disposed = false;
     let signature = "";
     let burstUntil = 0;
+    let retry = 0;
 
     const paint = () => {
       if (disposed || !hostRef.current) return;
@@ -139,6 +140,17 @@ export function LevelTags({
         : `::${height}:${Math.round(axisWidth)}`;
       if (next === signature) return;
       signature = next;
+
+      // Au premier rendu, l'axe n'a pas encore de largeur (mise en page en
+      // cours) : la pastille se collerait au bord et recouvrirait les prix.
+      // Une seule reprise, une fois la mise en page stabilisée.
+      if (axisWidth === 0 && retry === 0) {
+        retry = window.setTimeout(() => {
+          retry = 0;
+          signature = "";
+          schedule();
+        }, 150);
+      }
 
       // La pastille meurt contre l'axe des prix (2 px de respiration).
       if (hostRef.current)
@@ -230,6 +242,7 @@ export function LevelTags({
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      window.clearTimeout(retry);
       window.removeEventListener("resize", schedule);
       for (const name of gestures) {
         window.removeEventListener(name, burst);
@@ -252,6 +265,9 @@ export function LevelTags({
       aria-hidden="true"
       className="pointer-events-none absolute inset-y-0 right-0 z-20 w-0"
     >
+      {/* `w-max` : l'hôte fait 0 px de large (il n'existe que pour porter les
+          pastilles). Sans largeur intrinsèque, la pastille se faisait écraser à
+          l'espace disponible et son prix finissait coupé. */}
       {levels.map((level) => (
         <span
           key={level.id}
@@ -259,7 +275,7 @@ export function LevelTags({
             if (element) tagRefs.current.set(level.id, element);
             else tagRefs.current.delete(level.id);
           }}
-          className="absolute top-0 right-0 rounded-l-[3px] px-1.5 text-[10px] leading-[19px] font-semibold tracking-[0.02em] whitespace-nowrap opacity-0 shadow-[0_1px_6px_rgba(0,0,0,.35)]"
+          className="absolute top-0 right-0 w-max rounded-l-[3px] px-1.5 text-[10px] leading-[19px] font-semibold tracking-[0.02em] whitespace-nowrap opacity-0 shadow-[0_1px_6px_rgba(0,0,0,.35)]"
           style={{
             background: `rgb(${level.rgb})`,
             color: "#0b1220",
