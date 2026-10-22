@@ -9,6 +9,7 @@ import { WINDOW_HOURS } from "@/lib/candles";
 import { firstParam, parseExpiryFilter, parseInterval } from "@/lib/params";
 import type { CandleInterval } from "@/server/providers/types";
 import { getCandleSeries, getGexSnapshot } from "@/server/registry";
+import { AutoRefresh } from "@/ui/AutoRefresh";
 import { DataBadge } from "@/ui/DataBadge";
 import { ReportProvenance } from "@/ui/ReportProvenance";
 
@@ -62,6 +63,7 @@ export default async function ChartPage({
   return (
     <div className="flex h-full flex-col max-md:overflow-auto">
       <ReportProvenance provenance={snapshot.provenance} />
+      <AutoRefresh />
       <AutoRegime regime={snapshot.regime} />
 
       <div className="flex flex-none flex-wrap items-center gap-2 overflow-x-auto border-b border-line px-3.5 py-2">

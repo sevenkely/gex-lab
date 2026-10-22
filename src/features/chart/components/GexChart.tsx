@@ -183,6 +183,9 @@ export function GexChart({
   // L'indicateur est étiqueté par vue : un chargement resté en vol lors d'un
   // changement d'unité de temps ne peut pas rallumer la pastille à tort.
   const viewKey = `${snapshot.assetId}:${interval}`;
+  // Vue déjà recadrée : un rafraîchissement serveur de la même vue ne doit pas
+  // rappeler `fitContent()` (le zoom sauterait à chaque minute).
+  const fittedRef = useRef<string | null>(null);
   // Le pont ATAS est disponible mais désactivé par défaut : le graphique
   // continue d'afficher la donnée serveur différée de 15 min, comme avant.
   // `NEXT_PUBLIC_ATAS_LIVE=1` l'active explicitement (NQ, ES, GC).
@@ -878,12 +881,23 @@ export function GexChart({
     // Nouvelle fenêtre serveur (unité de temps, actif) : réapplique le tampon
     // du pont. Sans cela, le passage 1m → 5m effacerait les bougies live.
     reapplyAtasRef.current();
+
+    // Le rafraîchissement périodique de la page (AutoRefresh, 60 s) remplace la
+    // fenêtre par la même vue décalée de quelques minutes : recadrer à chaque
+    // fois rendait le zoom et le défilement inutilisables. On ne recadre que sur
+    // un vrai changement de vue (actif, unité de temps), ou au premier tracé.
+    if (fittedRef.current === viewKey) {
+      writeLegend(null);
+      return;
+    }
+    fittedRef.current = viewKey;
+
     const frame = requestAnimationFrame(() => {
       chartRef.current?.timeScale().fitContent();
       writeLegend(null);
     });
     return () => cancelAnimationFrame(frame);
-  }, [candles, writeLegend]);
+  }, [candles, viewKey, writeLegend]);
 
   /* ----------------------------------------------- historique au défilement */
 
