@@ -279,3 +279,23 @@ faisait écraser et son prix était coupé dès que le libellé s'allongeait
 déborde vers la gauche, ce qui est exactement le comportement voulu contre
 l'axe. Au premier rendu, la largeur de l'axe vaut parfois 0 avant la mise en
 page : une reprise unique à 150 ms replace la pastille une fois l'axe mesuré.
+
+## 11. Badge de cache : la provenance de la vue, pas l'état d'un process
+
+**Constat :** un badge qui interroge `/api/cache-status` ne peut pas mesurer le
+cache de la vue. En serverless, une route API et une page sont deux fonctions
+distinctes, avec deux mémoires : la route répondait toujours « 0 entrée » alors
+que la page venait de remplir son cache.
+
+**Décision :**
+
+- le badge lit la provenance que la page publie elle-même, via le composant
+  `ReportProvenance` (aucune requête réseau, aucune duplication de calcul) :
+  l'âge affiché est celui de la donnée à l'écran ;
+- deux propriétés d'environnement sont passées par le layout — le driver de
+  cache (`partagé` / `mémoire`) et `DATA_MODE` : identiques dans toutes les
+  fonctions, donc fiables ;
+- `fixtures` s'affiche dès que la vue est en démonstration (`provenance.demo`)
+  ou que `DATA_MODE=mock` ;
+- le rendu attend le montage (`useSyncExternalStore`) : un âge calculé au SSR
+  divergerait de l'horloge du client.

@@ -13,6 +13,22 @@ import type { GexRegime } from "@/features/gex/types";
 export type RegimeMode = "auto" | "long" | "short";
 export type FlowFilter = "all" | "calls" | "puts" | "blocks";
 
+/**
+ * Provenance des données affichées par la vue courante.
+ *
+ * Chaque page la publie (composant `ReportProvenance`) pour que l'en-tête
+ * puisse dire, sans requête supplémentaire, d'où vient le chiffre à l'écran et
+ * depuis combien de temps il a été récupéré.
+ */
+export interface ViewProvenance {
+  fetchedAt: number;
+  /** true : la vue affiche des fixtures (source en échec). */
+  demo: boolean;
+  /** true : valeur servie depuis le cache alors que la source échoue. */
+  stale: boolean;
+  provider: string;
+}
+
 export interface UiState {
   /** Mode du régime affiché : auto (calculé) ou forcé (démo). */
   regimeMode: RegimeMode;
@@ -28,6 +44,9 @@ export interface UiState {
   flowFilter: FlowFilter;
   /** Intervalles du graphique (clé → valeur) pour mémoriser le choix. */
   interval: string;
+  /** Provenance de la vue courante (en-tête : âge et repli fixtures). */
+  provenance: ViewProvenance | null;
+  setProvenance: (provenance: ViewProvenance) => void;
   setRegimeMode: (mode: RegimeMode) => void;
   setAutoRegime: (regime: GexRegime) => void;
   toggleFocus: () => void;
@@ -45,7 +64,9 @@ export const useUiStore = create<UiState>((set) => ({
   expiryFilter: "ALL",
   flowFilter: "all",
   interval: "5m",
+  provenance: null,
   setRegimeMode: (regimeMode) => set({ regimeMode }),
+  setProvenance: (provenance) => set({ provenance }),
   setAutoRegime: (autoRegime) => set({ autoRegime }),
   toggleFocus: () => set((s) => ({ focus: !s.focus })),
   toggleLevels: () => set((s) => ({ showLevels: !s.showLevels })),

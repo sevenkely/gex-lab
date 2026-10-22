@@ -16,6 +16,7 @@ import { AssetMark } from "@/ui/AssetMark";
 import { Card } from "@/ui/Card";
 import { DataBadge } from "@/ui/DataBadge";
 import { PageHeader, Stat } from "@/ui/PageHeader";
+import { ReportProvenance } from "@/ui/ReportProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,7 @@ export default async function GammaPage({
 
   return (
     <div className="h-full overflow-auto">
+      <ReportProvenance provenance={snapshot.provenance} />
       <AutoRegime regime={snapshot.regime} />
       <div className="mx-auto max-w-[1180px] p-4 lg:p-6">
         <PageHeader

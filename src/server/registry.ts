@@ -77,6 +77,7 @@ export function dataMode(): DataMode {
   return "auto";
 }
 
+
 function pickChainProvider(asset: AssetConfig, mode: DataMode): ChainProvider {
   if (mode !== "mock") {
     const live = chainProviders.find((p) => p.id !== "mock" && p.supports(asset));

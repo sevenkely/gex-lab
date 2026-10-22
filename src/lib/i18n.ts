@@ -32,6 +32,16 @@ const fr = {
     regimeLong: "Régime : long",
     regimeShort: "Régime : short",
   },
+  cache: {
+    label: "cache",
+    shared: "partagé",
+    memory: "mémoire",
+    fixtures: "fixtures",
+    source: "source",
+    fresh: "récupéré il y a",
+    stale: "dernière valeur connue (source en échec)",
+    empty: "—",
+  },
   regime: {
     long: "Long gamma",
     short: "Short gamma",
@@ -285,6 +295,16 @@ const en: Dictionary = {
     regimeAuto: "Regime: auto",
     regimeLong: "Regime: long",
     regimeShort: "Regime: short",
+  },
+  cache: {
+    label: "cache",
+    shared: "shared",
+    memory: "memory",
+    fixtures: "fixtures",
+    source: "source",
+    fresh: "fetched",
+    stale: "last known value (source failing)",
+    empty: "—",
   },
   regime: { long: "Long gamma", short: "Short gamma", label: "Regime" },
   badges: {

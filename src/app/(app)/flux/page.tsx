@@ -8,6 +8,7 @@ import { nyTimeShort } from "@/lib/time";
 import { Card } from "@/ui/Card";
 import { DataBadge } from "@/ui/DataBadge";
 import { PageHeader } from "@/ui/PageHeader";
+import { ReportProvenance } from "@/ui/ReportProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,9 @@ export default async function FlowPage() {
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1560px] p-4 lg:p-6">
+        <ReportProvenance
+          provenance={cryptoTrades[0]?.provenance ?? cryptoTrades[1].provenance}
+        />
         <PageHeader
           eyebrow={`Flux · ${CRYPTO.map((asset) => asset.symbol).join(" / ")} · Deribit`}
           title={

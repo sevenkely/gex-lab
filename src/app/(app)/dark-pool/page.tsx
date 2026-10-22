@@ -4,6 +4,7 @@ import { t } from "@/lib/i18n";
 import { getDarkPoolSnapshot } from "@/server/registry";
 import { DataBadge } from "@/ui/DataBadge";
 import { PageHeader, Stat } from "@/ui/PageHeader";
+import { ReportProvenance } from "@/ui/ReportProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function DarkPoolPage() {
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1180px] p-4 lg:p-6">
+        <ReportProvenance provenance={provenance} />
         <PageHeader
           eyebrow={`FINRA · ATS · semaine du ${snapshot.weekStart}`}
           title={

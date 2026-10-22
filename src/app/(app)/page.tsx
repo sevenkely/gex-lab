@@ -11,6 +11,7 @@ import { Card } from "@/ui/Card";
 import { DataBadge } from "@/ui/DataBadge";
 import { GexBars } from "@/ui/GexBars";
 import { PageHeader } from "@/ui/PageHeader";
+import { ReportProvenance } from "@/ui/ReportProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +50,7 @@ export default async function HomePage() {
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-[1560px] p-4 lg:p-6">
+        <ReportProvenance provenance={reference.provenance} />
         <AutoRegime regime={reference?.regime ?? "long"} />
 
         <PageHeader

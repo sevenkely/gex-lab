@@ -15,10 +15,18 @@ import { t } from "@/lib/i18n";
 import { nyClock } from "@/lib/time";
 import { usePaletteStore } from "@/store/palette";
 import { useEffectiveRegime } from "@/store/ui";
+import { CacheBadge } from "./CacheBadge";
 import { activeNav, navLabel } from "./nav";
 import { RegimeToggle } from "./RegimeToggle";
 
-export function Header() {
+export function Header({
+  cacheDriver,
+  dataMode,
+}: {
+  /** Cache serveur configuré (propriété d'environnement, donc global). */
+  cacheDriver: "upstash" | "memory";
+  dataMode: "auto" | "live" | "mock";
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const clockRef = useRef<HTMLSpanElement | null>(null);
@@ -111,6 +119,8 @@ export function Header() {
         <i aria-hidden="true" className={`size-1.5 flex-none rounded-full ${latencyDot}`} />
         {latencyLabel}
       </span>
+      <span aria-hidden="true" className="h-3 w-px bg-line max-md:hidden" />
+      <CacheBadge cacheDriver={cacheDriver} dataMode={dataMode} />
       {/* Annonce vocale du changement de régime */}
       <span className="sr-only" aria-live="polite">
         {regime === "long" ? t().regime.long : t().regime.short}

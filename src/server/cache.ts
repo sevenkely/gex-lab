@@ -214,7 +214,7 @@ export function clearMemoryCache(): void {
   inflight.clear();
 }
 
-/** Nom du cache partagé actif, pour les diagnostics (`/api/health`). */
+/** Nom du cache partagé actif, pour les diagnostics et le badge de l'en-tête. */
 export function sharedCacheStatus(): { kind: "upstash" | "memory"; keys: number } {
   return { kind: ensureDriver() ? "upstash" : "memory", keys: memory.size };
 }
